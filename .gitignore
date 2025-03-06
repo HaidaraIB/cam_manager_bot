@@ -1,0 +1,7 @@
+data/*
+.env
+__pycache__/
+session.session
+test.py
+errors.txt
+his_bot
