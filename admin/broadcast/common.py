@@ -31,6 +31,8 @@ async def send_to(users: list[models.User], context: ContextTypes.DEFAULT_TYPE):
         "audio": msg.audio,
         "voice": msg.voice,
     }
+    media = None
+    media_type = None
     for m_type, m in media_types.items():
         if m:
             media = m

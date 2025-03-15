@@ -27,7 +27,7 @@ from custom_filters import Admin
 async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type == Chat.PRIVATE and Admin().filter(update):
         await update.callback_query.edit_message_text(
-            text="أرسل الرسالة.",
+            text="أرسل الرسالة",
             reply_markup=InlineKeyboardMarkup(back_to_admin_home_page_button),
         )
         return THE_MESSAGE
@@ -65,13 +65,13 @@ async def choose_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif update.callback_query.data == "specific users":
             context.user_data["specific users"] = set()
             await update.callback_query.edit_message_text(
-                text="قم بإرسال آيديات المستخدمين الذين تريد إرسال الرسالة لهم عند الانتهاء اضغط تم الانتهاء.",
+                text="قم بإرسال آيديات المستخدمين الذين تريد إرسال الرسالة لهم عند الانتهاء اضغط تم الانتهاء",
                 reply_markup=build_done_button(),
             )
             return ENTER_USERS
 
         await update.callback_query.edit_message_text(
-            text="يقوم البوت بإرسال الرسائل الآن، يمكنك متابعة استخدامه بشكل طبيعي.",
+            text="يقوم البوت بإرسال الرسائل الآن، يمكنك متابعة استخدامه بشكل طبيعي",
             reply_markup=build_admin_keyboard(),
         )
 
@@ -84,7 +84,7 @@ back_to_send_to = get_message
 async def enter_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type == Chat.PRIVATE and Admin().filter(update):
         user_id = int(update.message.text)
-        punch_line = "تابع مع باقي الآيديات واضغط تم الانتهاء عند الانتهاء."
+        punch_line = "تابع مع باقي الآيديات واضغط تم الانتهاء عند الانتهاء"
 
         try:
             await context.bot.get_chat(chat_id=user_id)
@@ -109,7 +109,7 @@ async def enter_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def done_entering_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type == Chat.PRIVATE and Admin().filter(update):
         await update.callback_query.edit_message_text(
-            text="يقوم البوت بإرسال الرسائل الآن، يمكنك متابعة استخدامه بشكل طبيعي.",
+            text="يقوم البوت بإرسال الرسائل الآن، يمكنك متابعة استخدامه بشكل طبيعي",
             reply_markup=build_admin_keyboard(),
         )
         asyncio.create_task(
