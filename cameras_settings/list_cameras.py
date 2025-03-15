@@ -314,7 +314,7 @@ async def choose_update_setting(update: Update, context: ContextTypes.DEFAULT_TY
                 ]
             await update.callback_query.edit_message_caption(
                 caption=(
-                    stringify_cam(cam_data=context.user_data, for_admin=is_admin)
+                    stringify_cam(cam=cam, for_admin=is_admin)
                     + "\n\nاختر القيمة الجديدة"
                 ),
                 reply_markup=InlineKeyboardMarkup(keyboard),
@@ -443,6 +443,7 @@ async def update_cam_type_and_status(
 async def confirm_delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type == Chat.PRIVATE and Admin().filter(update):
         cam_id = context.user_data["cam_id"]
+        cam = models.Camera.get_by(attr="id", val=cam_id)
         if update.callback_query.data.startswith("yes"):
             await models.Camera.delete(cam_id)
             await update.callback_query.answer(
@@ -451,7 +452,7 @@ async def confirm_delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             await update.callback_query.edit_message_caption(
                 caption=(
-                    stringify_cam(cam_data=context.user_data, for_admin=True)
+                    stringify_cam(cam=cam, for_admin=True)
                     + "\n\nتم حذف الكاميرا بنجاح ✅"
                 ),
             )
