@@ -18,5 +18,5 @@ async def admin_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 admin_settings_handler = CallbackQueryHandler(
     admin_settings,
-    "^admin settings$|^back_to_user_settings$",
+    "^admin settings$|^back_to_admin_settings$",
 )
