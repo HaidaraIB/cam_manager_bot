@@ -7,14 +7,15 @@ from telegram.ext import (
 )
 import os
 import models
-from custom_filters import Admin
-from common.decorators import (
-    check_if_user_banned_dec,
-    add_new_user_dec,
-    check_if_user_member_decorator,
-)
+from custom_filters import Admin, User
 from common.keyboards import build_user_keyboard, build_admin_keyboard
 from common.common import check_hidden_keyboard
+
+# from common.decorators import (
+#     check_if_user_banned_dec,
+#     add_new_user_dec,
+#     check_if_user_member_decorator,
+# )
 
 
 async def inits(app: Application):
@@ -31,11 +32,13 @@ async def set_commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-@add_new_user_dec
-@check_if_user_banned_dec
+# @add_new_user_dec
+# @check_if_user_banned_dec
 # @check_if_user_member_decorator
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_chat.type == Chat.PRIVATE:
+    is_admin = Admin().filter(update)
+    is_user = User().filter(update)
+    if update.effective_chat.type == Chat.PRIVATE and (is_admin or is_user):
         await set_commands(update, context)
         await update.message.reply_text(
             text="أهلاً بك...",

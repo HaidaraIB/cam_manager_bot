@@ -17,30 +17,30 @@ from common.back_to_home_page import back_to_admin_home_page_handler
 from common.keyboards import build_admin_keyboard
 from common.constants import *
 from custom_filters import Admin
-from admin.admin_settings.admin_settings import admin_settings_handler
+from admin.user_settings.user_settings import user_settings_handler
 from start import admin_command
 import models
 
-NEW_ADMIN_ID = 0
+NEW_USER_ID = 0
 
 
-async def add_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def add_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type == Chat.PRIVATE and Admin().filter(update):
         await update.callback_query.answer()
         await update.callback_query.delete_message()
         await context.bot.send_message(
             chat_id=update.effective_user.id,
             text=(
-                "اختر حساب الآدمن الذي تريد إضافته بالضغط على الزر أدناه\n\n"
+                "اختر حساب المستخدم الذي تريد إضافته بالضغط على الزر أدناه\n\n"
                 "يمكنك إلغاء العملية بالضغط على /admin."
             ),
             reply_markup=ReplyKeyboardMarkup(
                 keyboard=[
                     [
                         KeyboardButton(
-                            text="اختيار حساب آدمن",
+                            text="اختيار حساب مستخدم",
                             request_users=KeyboardButtonRequestUsers(
-                                request_id=4, user_is_bot=False
+                                request_id=6, user_is_bot=False
                             ),
                         )
                     ]
@@ -48,19 +48,25 @@ async def add_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 resize_keyboard=True,
             ),
         )
-        return NEW_ADMIN_ID
+        return NEW_USER_ID
 
 
-async def new_admin_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def new_user_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type == Chat.PRIVATE and Admin().filter(update):
         if update.effective_message.users_shared:
-            admin_id = update.effective_message.users_shared.users[0].user_id
+            user = await context.bot.get_chat(
+                chat_id=update.effective_message.users_shared.users[0].user_id
+            )
         else:
-            admin_id = int(update.message.text)
+            user = await context.bot.get_chat(chat_id=int(update.message.text))
 
-        await models.Admin.add_new_admin(admin_id=admin_id)
+        await models.User.add_new_user(
+            user_id=user.id,
+            username=user.username,
+            name=user.full_name,
+        )
         await update.message.reply_text(
-            text="تمت إضافة الآدمن بنجاح ✅.",
+            text="تمت إضافة المستخدم بنجاح ✅",
             reply_markup=ReplyKeyboardRemove(),
         )
         await update.message.reply_text(
@@ -70,27 +76,27 @@ async def new_admin_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
 
-add_admin_handler = ConversationHandler(
+add_user_handler = ConversationHandler(
     entry_points=[
         CallbackQueryHandler(
-            callback=add_admin,
-            pattern="^add admin$",
+            callback=add_user,
+            pattern="^add user$",
         ),
     ],
     states={
-        NEW_ADMIN_ID: [
+        NEW_USER_ID: [
             MessageHandler(
                 filters=filters.Regex("^\d+$"),
-                callback=new_admin_id,
+                callback=new_user_id,
             ),
             MessageHandler(
                 filters=filters.StatusUpdate.USERS_SHARED,
-                callback=new_admin_id,
+                callback=new_user_id,
             ),
         ]
     },
     fallbacks=[
-        admin_settings_handler,
+        user_settings_handler,
         admin_command,
         back_to_admin_home_page_handler,
     ],

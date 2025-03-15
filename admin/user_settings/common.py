@@ -4,22 +4,22 @@ from custom_filters import Admin
 from common.back_to_home_page import back_to_admin_home_page_button
 
 
-def build_admin_settings_keyboard():
+def build_user_settings_keyboard():
     keyboard = [
         [
             InlineKeyboardButton(
-                text="إضافة آدمن ➕",
-                callback_data="add admin",
+                text="إضافة مستخدم ➕",
+                callback_data="add user",
             ),
             InlineKeyboardButton(
-                text="حذف آدمن ✖️",
-                callback_data="remove admin",
+                text="حذف مستخدم ✖️",
+                callback_data="remove user",
             ),
         ],
         [
             InlineKeyboardButton(
-                text="عرض آيديات الآدمنز الحاليين 🆔",
-                callback_data="show admins",
+                text="عرض المستخدمين الحاليين 🆔",
+                callback_data="show users",
             )
         ],
     ]

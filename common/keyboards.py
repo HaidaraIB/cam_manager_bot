@@ -8,7 +8,14 @@ from telegram import (
 
 
 def build_user_keyboard():
-    keyboard = []
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                text="إدارة الكاميرات 📷",
+                callback_data="manage_cameras",
+            ),
+        ],
+    ]
     return InlineKeyboardMarkup(keyboard)
 
 
@@ -18,7 +25,11 @@ def build_admin_keyboard():
             InlineKeyboardButton(
                 text="إعدادات الآدمن ⚙️🎛",
                 callback_data="admin settings",
-            )
+            ),
+            InlineKeyboardButton(
+                text="إعدادات المستخدم ⚙️👤",
+                callback_data="user settings",
+            ),
         ],
         [
             InlineKeyboardButton(
