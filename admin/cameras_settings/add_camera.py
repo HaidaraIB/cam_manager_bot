@@ -1,0 +1,666 @@
+from telegram import Update, Chat, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram.ext import (
+    ContextTypes,
+    ConversationHandler,
+    CallbackQueryHandler,
+    MessageHandler,
+    filters,
+)
+
+from custom_filters import Admin
+
+from admin.cameras_settings.common import (
+    build_add_camera_methods_keyboard,
+    stringify_cam,
+)
+from admin.cameras_settings.cameras_settings import cameras_settings_handler
+from start import admin_command
+
+from common.back_to_home_page import (
+    back_to_admin_home_page_button,
+    back_to_admin_home_page_handler,
+)
+from common.constants import *
+from common.keyboards import build_back_button, build_admin_keyboard
+import models
+import pathlib
+import os
+import re
+
+(
+    ENTRY_TYPE,
+    INSTITUTION,
+    CAM_INFO,
+    PHOTO_IN_AUTO_ENTRY_MODE,
+    PHOTO,
+    IP,
+    PORT,
+    ADMIN_USER,
+    ADMIN_PASS,
+    USER,
+    USER_PASS,
+    SERIAL,
+    CAM_TYPE,
+    STATUS,
+    LOCATION,
+    CONFIRM_ADD_CAM,
+) = range(16)
+
+
+async def add_camera(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.type == Chat.PRIVATE and Admin().filter(update):
+        keyboard = build_add_camera_methods_keyboard()
+        keyboard.append(build_back_button("back_to_cameras_settings"))
+        keyboard.append(back_to_admin_home_page_button[0])
+        await update.callback_query.edit_message_text(
+            text="كيف تريد إضافة الكاميرا؟",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+        )
+        return ENTRY_TYPE
+
+
+async def choose_entry_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.type == Chat.PRIVATE and Admin().filter(update):
+        back_buttons = [
+            build_back_button("back_to_choose_entry_type"),
+            back_to_admin_home_page_button[0],
+        ]
+        if not update.callback_query.data.startswith("back"):
+            add_cam_type = update.callback_query.data
+            context.user_data["entry_type"] = add_cam_type
+        else:
+            add_cam_type = context.user_data["entry_type"]
+
+        if add_cam_type == "manual_entry":
+            await update.callback_query.edit_message_text(
+                text="أرسل اسم المؤسسة 📌",
+                reply_markup=InlineKeyboardMarkup(back_buttons),
+            )
+            return INSTITUTION
+        elif add_cam_type == "auto_entry":
+            await update.callback_query.edit_message_text(
+                text="أرسل البيانات النصية للكاميرا ✏️",
+                reply_markup=InlineKeyboardMarkup(back_buttons),
+            )
+            return CAM_INFO
+
+
+back_to_choose_entry_type = add_camera
+
+
+async def get_institution(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.type == Chat.PRIVATE and Admin().filter(update):
+        back_buttons = [
+            build_back_button("back_to_get_institution"),
+            back_to_admin_home_page_button[0],
+        ]
+        last_cam = models.Camera.get_by(last=True)
+        last_cam_id = last_cam.id if last_cam else 0
+        if update.message:
+            inst = update.message.text
+            name = f"Cam_{str(last_cam_id + 1).rjust(3, '0')}_{inst}"
+            context.user_data["name"] = name
+            await update.message.reply_text(
+                text=(
+                    f"سيكون اسم الكاميرا: <code>{name}</code>\n" "أرسل صورة الكاميرا"
+                ),
+                reply_markup=InlineKeyboardMarkup(back_buttons),
+            )
+        else:
+            name = context.user_data["name"]
+            await update.callback_query.edit_message_text(
+                text=(f"اسم الكاميرا: <code>{name}</code>\n" "أرسل صورة الكاميرا"),
+                reply_markup=InlineKeyboardMarkup(back_buttons),
+            )
+        return PHOTO
+
+
+back_to_get_institution = choose_entry_type
+
+
+async def get_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.type == Chat.PRIVATE and Admin().filter(update):
+        back_buttons = [
+            build_back_button("back_to_get_photo"),
+            back_to_admin_home_page_button[0],
+        ]
+        if update.message:
+            context.user_data["photo"] = update.message.photo[-1].file_id
+            await update.message.reply_text(
+                text="أرسل الip",
+                reply_markup=InlineKeyboardMarkup(back_buttons),
+            )
+        else:
+            await update.callback_query.edit_message_text(
+                text="أرسل الip",
+                reply_markup=InlineKeyboardMarkup(back_buttons),
+            )
+
+        return IP
+
+
+back_to_get_photo = get_institution
+
+
+async def get_ip(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.type == Chat.PRIVATE and Admin().filter(update):
+        back_buttons = [
+            build_back_button("back_to_get_ip"),
+            back_to_admin_home_page_button[0],
+        ]
+        if update.message:
+            context.user_data["ip"] = update.message.text
+            await update.message.reply_text(
+                text="أرسل الport",
+                reply_markup=InlineKeyboardMarkup(back_buttons),
+            )
+        else:
+            await update.callback_query.edit_message_text(
+                text="أرسل الport",
+                reply_markup=InlineKeyboardMarkup(back_buttons),
+            )
+
+        return PORT
+
+
+back_to_get_ip = get_photo
+
+
+async def get_port(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.type == Chat.PRIVATE and Admin().filter(update):
+        back_buttons = [
+            build_back_button("back_to_get_port"),
+            back_to_admin_home_page_button[0],
+        ]
+        if update.message:
+            context.user_data["port"] = update.message.text
+            await update.message.reply_text(
+                text="أرسل الadmin user",
+                reply_markup=InlineKeyboardMarkup(back_buttons),
+            )
+        else:
+            await update.callback_query.edit_message_text(
+                text="أرسل الadmin user",
+                reply_markup=InlineKeyboardMarkup(back_buttons),
+            )
+
+        return ADMIN_USER
+
+
+back_to_get_port = get_ip
+
+
+async def get_admin_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.type == Chat.PRIVATE and Admin().filter(update):
+        back_buttons = [
+            build_back_button("back_to_get_admin_user"),
+            back_to_admin_home_page_button[0],
+        ]
+        if update.message:
+            context.user_data["admin_user"] = update.message.text
+            await update.message.reply_text(
+                text="أرسل الadmin password",
+                reply_markup=InlineKeyboardMarkup(back_buttons),
+            )
+        else:
+            await update.callback_query.edit_message_text(
+                text="أرسل الadmin password",
+                reply_markup=InlineKeyboardMarkup(back_buttons),
+            )
+        return ADMIN_PASS
+
+
+back_to_get_admin_user = get_port
+
+
+async def get_admin_pass(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.type == Chat.PRIVATE and Admin().filter(update):
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    text="تخطي ⏭",
+                    callback_data="skip_user",
+                )
+            ],
+            build_back_button("back_to_get_admin_pass"),
+            back_to_admin_home_page_button[0],
+        ]
+        if update.message:
+            context.user_data["admin_pass"] = update.message.text
+            await update.message.reply_text(
+                text=("أرسل الuser\n" "<i>اختياري</i>"),
+                reply_markup=InlineKeyboardMarkup(keyboard),
+            )
+        else:
+            await update.callback_query.edit_message_text(
+                text=("أرسل الuser\n" "<i>اختياري</i>"),
+                reply_markup=InlineKeyboardMarkup(keyboard),
+            )
+        return USER
+
+
+back_to_get_admin_pass = get_admin_user
+
+
+async def get_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.type == Chat.PRIVATE and Admin().filter(update):
+        back_buttons = [
+            build_back_button("back_to_get_user"),
+            back_to_admin_home_page_button[0],
+        ]
+        if update.message:
+            context.user_data["user"] = update.message.text
+            await update.message.reply_text(
+                text=f"أرسل الuser password\n",
+                reply_markup=InlineKeyboardMarkup(back_buttons),
+            )
+            return USER_PASS
+
+        elif update.callback_query.data == "skip_user":
+            context.user_data["user"] = ""
+            context.user_data["user_pass"] = ""
+            await update.callback_query.edit_message_text(
+                text="أرسل الرقم التسلسلي",
+                reply_markup=InlineKeyboardMarkup(back_buttons),
+            )
+            return SERIAL
+
+
+back_to_get_user = get_admin_pass
+
+
+async def get_user_pass(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.type == Chat.PRIVATE and Admin().filter(update):
+        back_buttons = [
+            build_back_button("back_to_get_user_pass"),
+            back_to_admin_home_page_button[0],
+        ]
+        if update.message:
+            context.user_data["user_pass"] = update.message.text
+            await update.message.reply_text(
+                text=("أرسل الرقم التسلسلي\n" "<b>يجب أن يبدأ ب-SN</b>"),
+                reply_markup=InlineKeyboardMarkup(back_buttons),
+            )
+        else:
+            await update.callback_query.edit_message_text(
+                text=("أرسل الرقم التسلسلي\n" "<b>يجب أن يبدأ ب-SN</b>"),
+                reply_markup=InlineKeyboardMarkup(back_buttons),
+            )
+        return SERIAL
+
+
+back_to_get_user_pass = get_user
+
+
+async def get_serial(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.type == Chat.PRIVATE and Admin().filter(update):
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    text="37777,80 (dahua)",
+                    callback_data="dahua",
+                ),
+                InlineKeyboardButton(
+                    text="9000-8000 (hikvision)",
+                    callback_data="hikvision",
+                ),
+            ],
+            build_back_button("back_to_get_serial"),
+            back_to_admin_home_page_button[0],
+        ]
+        if update.message:
+            context.user_data["serial"] = update.message.text
+            await update.message.reply_text(
+                text="اختر نوع الكاميرا",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+            )
+        else:
+            await update.callback_query.edit_message_text(
+                text="اختر نوع الكاميرا",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+            )
+        return CAM_TYPE
+
+
+back_to_get_serial = get_user_pass
+
+
+async def choose_cam_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.type == Chat.PRIVATE and Admin().filter(update):
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    text="متصل",
+                    callback_data="connected",
+                ),
+                InlineKeyboardButton(
+                    text="غير متصل",
+                    callback_data="disconnected",
+                ),
+            ],
+            build_back_button("back_to_choose_cam_type"),
+            back_to_admin_home_page_button[0],
+        ]
+        if not update.callback_query.data.startswith("back"):
+            context.user_data["cam_type"] = update.callback_query.data
+        await update.callback_query.edit_message_text(
+            text="اختر حالة الكاميرا",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+        )
+        return STATUS
+
+
+back_to_choose_cam_type = get_serial
+
+
+async def choose_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.type == Chat.PRIVATE and Admin().filter(update):
+        keyboard = [
+            build_back_button("back_to_choose_status"),
+            back_to_admin_home_page_button[0],
+        ]
+        if not update.callback_query.data.startswith("back"):
+            context.user_data["status"] = update.callback_query.data
+            await update.callback_query.edit_message_text(
+                text=(
+                    "أرسل الموقع بالصيغة التالية: الدولة,المدينة\n"
+                    "مثال:\n"
+                    "<code>sa,abha</code>\n"
+                    "<i>يمكنك النقر على المثال لنسخه والاستبدال مع المحافظة على التنسيق</i>"
+                ),
+                reply_markup=InlineKeyboardMarkup(keyboard),
+            )
+        else:
+            await update.callback_query.delete_message()
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=(
+                    "أرسل الموقع بالصيغة التالية: الدولة,المدينة\n"
+                    "مثال:\n"
+                    "<code>sa,abha</code>\n"
+                    "<i>يمكنك النقر على المثال لنسخه والاستبدال مع المحافظة على التنسيق</i>"
+                ),
+                reply_markup=InlineKeyboardMarkup(keyboard),
+            )
+
+        return LOCATION
+
+
+back_to_choose_status = choose_cam_type
+
+
+async def get_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.type == Chat.PRIVATE and Admin().filter(update):
+        back_buttons = [
+            [
+                InlineKeyboardButton(
+                    text="إضافة ➕",
+                    callback_data="confirm_add_cam",
+                )
+            ],
+            build_back_button("back_to_get_location"),
+            back_to_admin_home_page_button[0],
+        ]
+        if update.message:
+            context.user_data["location"] = update.message.text
+            await update.message.reply_photo(
+                photo=context.user_data["photo"],
+                caption=(
+                    stringify_cam(cam_data=context.user_data)
+                    + "\n\n"
+                    + "هل أنت متأكد من إضافة هذه الكاميرا؟\n\n"
+                    + "للإلغاء عد إلى القائمة الرئيسية."
+                ),
+                reply_markup=InlineKeyboardMarkup(back_buttons),
+            )
+        return CONFIRM_ADD_CAM
+
+
+back_to_get_location = choose_status
+
+
+async def confirm_add_cam(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.type == Chat.PRIVATE and Admin().filter(update):
+        photo = await context.bot.get_file(context.user_data["photo"])
+        await photo.download_to_drive(
+            pathlib.Path(f"uploads/{context.user_data['serial']}.jpg")
+        )
+
+        archive_msg = await context.bot.send_photo(
+            chat_id=int(os.getenv("PHOTOS_ARCHIVE")),
+            photo=context.user_data["photo"],
+        )
+        context.user_data["photo"] = archive_msg.photo[-1].file_id
+
+        await models.Camera.add(context.user_data)
+
+        await update.callback_query.answer(
+            text="تمت إضافة الكاميرا بنجاح ✅",
+            show_alert=True,
+        )
+        await update.callback_query.edit_message_caption(
+            caption=(
+                stringify_cam(cam_data=context.user_data)
+                + "\n\nتمت إضافة الكاميرا بنجاح ✅"
+            )
+        )
+        return ConversationHandler.END
+
+
+async def get_cam_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.type == Chat.PRIVATE and Admin().filter(update):
+        back_buttons = [
+            build_back_button("back_to_get_cam_info"),
+            back_to_admin_home_page_button[0],
+        ]
+        raw_cam_info: str = update.message.text
+        context.user_data["raw_cam_info"] = raw_cam_info
+        pattern = re.compile(
+            r"(\d+\.\d+\.\d+\.\d+)_(\d+)_([\w\d]+)_([\w\d@]+)_(SN-[\w\d]+)_\d+"
+        )
+        match = pattern.match(raw_cam_info)
+
+        ip, port, admin_user, admin_pass, serial_number = match.groups()
+        if models.Camera.get_by(attr="serial", val=serial_number):
+            await update.message.reply_text(
+                text="الكاميرا مضافة مسبقاً ⚠️",
+            )
+            return
+        last_cam = models.Camera.get_by(last=True)
+        last_cam_id = last_cam.id if last_cam else 0
+        name = f"Cam_{str(last_cam_id + 1).rjust(3, '0')}_cctv"
+
+        cam_type = (
+            "dahua"
+            if port in ["37777", "80"]
+            else "hikvision" if port in ["8000", "9000"] else "unknown"
+        )
+        context.user_data["name"] = name
+        context.user_data["ip"] = ip
+        context.user_data["port"] = port
+        context.user_data["admin_user"] = admin_user
+        context.user_data["admin_pass"] = admin_pass
+        context.user_data["user"] = ""
+        context.user_data["user_pass"] = ""
+        context.user_data["cam_type"] = cam_type
+        context.user_data["status"] = "connected"
+        context.user_data["location"] = "N/A"
+        context.user_data["serial"] = serial_number
+
+        await update.message.reply_text(
+            text=(
+                f"تم تحليل البيانات ✅\n\n"
+                + stringify_cam(cam_data=context.user_data)
+                + "\n\n"
+                + "أرسل صورة الكاميرا 📸"
+            ),
+            reply_markup=InlineKeyboardMarkup(back_buttons),
+        )
+        return PHOTO_IN_AUTO_ENTRY_MODE
+
+
+back_to_get_cam_info = choose_entry_type
+
+
+async def get_photo_in_auto_entry_mode(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+):
+    if update.effective_chat.type == Chat.PRIVATE and Admin().filter(update):
+        context.user_data["photo"] = update.message.photo[-1].file_id
+        photo = await context.bot.get_file(context.user_data["photo"])
+        await photo.download_to_drive(
+            pathlib.Path(f"uploads/{context.user_data['serial']}.jpg")
+        )
+
+        archive_msg = await context.bot.send_photo(
+            chat_id=int(os.getenv("PHOTOS_ARCHIVE")),
+            photo=context.user_data["photo"],
+        )
+        context.user_data["photo"] = archive_msg.photo[-1].file_id
+
+        await models.Camera.add(context.user_data)
+
+        await update.message.reply_photo(
+            photo=context.user_data["photo"],
+            caption=(
+                stringify_cam(cam_data=context.user_data)
+                + "\n\nتمت إضافة الكاميرا بنجاح ✅"
+            ),
+        )
+        await update.message.reply_text(
+            text=HOME_PAGE_TEXT,
+            reply_markup=build_admin_keyboard(),
+        )
+        return ConversationHandler.END
+
+
+add_camera_handler = ConversationHandler(
+    entry_points=[
+        CallbackQueryHandler(
+            add_camera,
+            "^add_camera$",
+        )
+    ],
+    states={
+        ENTRY_TYPE: [
+            CallbackQueryHandler(
+                choose_entry_type,
+                "^((manual)|(auto))_entry$",
+            )
+        ],
+        INSTITUTION: [
+            MessageHandler(
+                filters=filters.TEXT & ~filters.COMMAND,
+                callback=get_institution,
+            )
+        ],
+        CAM_INFO: [
+            MessageHandler(
+                filters=filters.Regex(
+                    r"^(\d+\.\d+\.\d+\.\d+)_(\d+)_([\w\d]+)_([\w\d@]+)_(SN-[\w\d]+)_\d+$"
+                ),
+                callback=get_cam_info,
+            )
+        ],
+        PHOTO_IN_AUTO_ENTRY_MODE: [
+            MessageHandler(
+                filters=filters.PHOTO,
+                callback=get_photo_in_auto_entry_mode,
+            )
+        ],
+        PHOTO: [
+            MessageHandler(
+                filters=filters.PHOTO,
+                callback=get_photo,
+            )
+        ],
+        IP: [
+            MessageHandler(
+                filters=filters.Regex("^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$"),
+                callback=get_ip,
+            )
+        ],
+        PORT: [
+            MessageHandler(
+                filters=filters.Regex("^[0-9]+$"),
+                callback=get_port,
+            )
+        ],
+        ADMIN_USER: [
+            MessageHandler(
+                filters=filters.TEXT & ~filters.COMMAND,
+                callback=get_admin_user,
+            )
+        ],
+        ADMIN_PASS: [
+            MessageHandler(
+                filters=filters.TEXT & ~filters.COMMAND,
+                callback=get_admin_pass,
+            )
+        ],
+        USER: [
+            MessageHandler(
+                filters=filters.TEXT & ~filters.COMMAND,
+                callback=get_user,
+            ),
+            CallbackQueryHandler(get_user, "^skip_user$"),
+        ],
+        USER_PASS: [
+            MessageHandler(
+                filters=filters.TEXT & ~filters.COMMAND,
+                callback=get_user_pass,
+            )
+        ],
+        SERIAL: [
+            MessageHandler(
+                filters=filters.Regex("^SN-.+$"),
+                callback=get_serial,
+            )
+        ],
+        CAM_TYPE: [
+            CallbackQueryHandler(
+                choose_cam_type,
+                "^((hikvision)|(dahua))$",
+            )
+        ],
+        STATUS: [
+            CallbackQueryHandler(
+                choose_status,
+                "^((connected)|(disconnected))$",
+            )
+        ],
+        LOCATION: [
+            MessageHandler(
+                filters=filters.Regex("^[a-zA-Z]+,[a-zA-Z]+$"),
+                callback=get_location,
+            )
+        ],
+        CONFIRM_ADD_CAM: [
+            CallbackQueryHandler(
+                confirm_add_cam,
+                "^confirm_add_cam$",
+            ),
+        ],
+    },
+    fallbacks=[
+        cameras_settings_handler,
+        CallbackQueryHandler(back_to_choose_entry_type, "^back_to_choose_entry_type$"),
+        CallbackQueryHandler(back_to_get_institution, "^back_to_get_institution$"),
+        CallbackQueryHandler(back_to_get_cam_info, "^back_to_get_cam_info$"),
+        CallbackQueryHandler(back_to_get_photo, "^back_to_get_photo$"),
+        CallbackQueryHandler(back_to_get_ip, "^back_to_get_ip$"),
+        CallbackQueryHandler(back_to_get_port, "^back_to_get_port$"),
+        CallbackQueryHandler(back_to_get_admin_user, "^back_to_get_admin_user$"),
+        CallbackQueryHandler(back_to_get_admin_pass, "^back_to_get_admin_pass$"),
+        CallbackQueryHandler(back_to_get_user, "^back_to_get_user$"),
+        CallbackQueryHandler(back_to_get_user_pass, "^back_to_get_user_pass$"),
+        CallbackQueryHandler(back_to_get_serial, "^back_to_get_serial$"),
+        CallbackQueryHandler(back_to_choose_cam_type, "^back_to_choose_cam_type$"),
+        CallbackQueryHandler(back_to_choose_status, "^back_to_choose_status$"),
+        CallbackQueryHandler(back_to_get_location, "^back_to_get_location$"),
+        back_to_admin_home_page_handler,
+        admin_command,
+    ],
+    name="add_camera_conversation",
+    persistent=True,
+)

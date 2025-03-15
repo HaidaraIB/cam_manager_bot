@@ -15,6 +15,7 @@ from admin.admin_calls import *
 from admin.admin_settings import *
 from admin.broadcast import *
 from admin.ban import *
+from admin.cameras_settings import *
 
 from models import create_tables
 
@@ -32,6 +33,11 @@ def main():
             callback=invalid_callback_data, pattern=InvalidCallbackData
         )
     )
+
+    app.add_handler(add_camera_handler)
+    app.add_handler(list_cameras_handler)
+    app.add_handler(cameras_settings_handler)
+
     # ADMIN SETTINGS
     app.add_handler(admin_settings_handler)
     app.add_handler(show_admins_handler)

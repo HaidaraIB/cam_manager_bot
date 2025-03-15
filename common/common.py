@@ -37,6 +37,7 @@ def uuid_generator():
 
 def create_folders():
     os.makedirs("data", exist_ok=True)
+    os.makedirs("uploads", exist_ok=True)
 
 
 async def invalid_callback_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
