@@ -10,11 +10,21 @@ def build_broadcast_keyboard():
         [
             InlineKeyboardButton(
                 text="الجميع 👥",
-                callback_data="all users",
+                callback_data="everyone",
             ),
             InlineKeyboardButton(
                 text="مستخدمين محددين 👤",
                 callback_data="specific users",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="جميع المستخدمين 👨🏻‍💼",
+                callback_data="all users",
+            ),
+            InlineKeyboardButton(
+                text="جميع الآدمنز 🤵🏻",
+                callback_data="all admins",
             ),
         ],
         build_back_button("back to the message"),
@@ -23,7 +33,9 @@ def build_broadcast_keyboard():
     return InlineKeyboardMarkup(keyboard)
 
 
-async def send_to(users: list[models.User], context: ContextTypes.DEFAULT_TYPE):
+async def send_to(
+    users: list[models.User | models.Admin], context: ContextTypes.DEFAULT_TYPE
+):
     msg: Message = context.user_data["the message"]
     media_types = {
         "photo": msg.photo[-1] if msg.photo else None,
@@ -40,7 +52,7 @@ async def send_to(users: list[models.User], context: ContextTypes.DEFAULT_TYPE):
             break
 
     for user in users:
-        chat_id = user.id if isinstance(user, models.User) else user
+        chat_id = user.id if isinstance(user, (models.User, models.Admin)) else user
         try:
             if media:
                 send_func = getattr(context.bot, f"send_{media_type}")

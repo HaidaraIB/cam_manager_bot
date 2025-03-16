@@ -54,22 +54,27 @@ back_to_the_message = broadcast_message
 
 async def choose_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type == Chat.PRIVATE and Admin().filter(update):
-        if update.callback_query.data == "all users":
-            asyncio.create_task(
-                send_to(
-                    users=models.User.get_users(),
-                    context=context,
-                )
-            )
-
-        elif update.callback_query.data == "specific users":
+        if update.callback_query.data == "specific users":
             context.user_data["specific users"] = set()
             await update.callback_query.edit_message_text(
                 text="قم بإرسال آيديات المستخدمين الذين تريد إرسال الرسالة لهم عند الانتهاء اضغط تم الانتهاء",
                 reply_markup=build_done_button(),
             )
             return ENTER_USERS
+        
+        elif update.callback_query.data == "all users":
+            users = models.User.get_users()
+        elif update.callback_query.data == "all admins":
+            users = models.Admin.get_admin_ids()
+        elif update.callback_query.data == "everyone":
+            users = models.User.get_users() + models.Admin.get_admin_ids()
 
+        asyncio.create_task(
+            send_to(
+                users=users,
+                context=context,
+            )
+        )
         await update.callback_query.edit_message_text(
             text="يقوم البوت بإرسال الرسائل الآن، يمكنك متابعة استخدامه بشكل طبيعي",
             reply_markup=build_admin_keyboard(),
@@ -140,7 +145,7 @@ broadcast_message_handler = ConversationHandler(
         SEND_TO: [
             CallbackQueryHandler(
                 callback=choose_users,
-                pattern="^((all)|(specific)) users$",
+                pattern="^((all)|(specific)) ((users)|(admins))$|^everyone$",
             )
         ],
         ENTER_USERS: [

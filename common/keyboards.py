@@ -58,10 +58,10 @@ def build_admin_keyboard():
                 text="إدارة الكاميرات 📷",
                 callback_data="manage_cameras",
             ),
-            # InlineKeyboardButton(
-            #     text="إدارة التنبيهات ⚠️",
-            #     callback_data="manage_alerts",
-            # ),
+            InlineKeyboardButton(
+                text="إدارة التنبيهات ⚠️",
+                callback_data="manage_alerts",
+            ),
         ],
         # [
         #     InlineKeyboardButton(
