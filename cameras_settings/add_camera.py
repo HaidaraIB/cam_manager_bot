@@ -94,7 +94,11 @@ async def choose_entry_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return INSTITUTION
         elif add_cam_type == "auto_entry":
             await update.callback_query.edit_message_text(
-                text="أرسل البيانات النصية للكاميرا ✏️",
+                text=(
+                    "أرسل البيانات النصية للكاميرا ✏️\n\n"
+                    "مثال:\n"
+                    "<code>192.168.0.1_456_admin_admin_SN-xx00xx00xx00xx0_1</code>"
+                ),
                 reply_markup=InlineKeyboardMarkup(back_buttons),
             )
             return CAM_INFO
@@ -625,16 +629,19 @@ async def get_cam_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["status"] = "connected"
         context.user_data["location"] = "N/A"
         context.user_data["serial"] = serial_number
-
-        await update.message.reply_text(
-            text=(
-                f"تم تحليل البيانات ✅\n\n"
-                + stringify_cam(cam_data=context.user_data, for_admin=is_admin)
-                + "\n\n"
-                + "أرسل صورة الكاميرا 📸"
-            ),
-            reply_markup=InlineKeyboardMarkup(back_buttons),
-        )
+        try:
+            await update.message.reply_text(
+                text=(
+                    f"تم تحليل البيانات ✅\n\n"
+                    + stringify_cam(cam_data=context.user_data, for_admin=is_admin)
+                    + "\n\n"
+                    + "أرسل صورة الكاميرا 📸"
+                ),
+                reply_markup=InlineKeyboardMarkup(back_buttons),
+            )
+        except:
+            import traceback
+            traceback.print_exc()
         return PHOTO_IN_AUTO_ENTRY_MODE
 
 
