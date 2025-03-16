@@ -13,6 +13,7 @@ from telegram.ext import (
     MessageHandler,
     filters,
 )
+from common.common import send_alert, get_user_display_name
 from common.back_to_home_page import back_to_admin_home_page_handler
 from common.keyboards import build_admin_keyboard
 from common.constants import *
@@ -20,6 +21,7 @@ from custom_filters import Admin
 from admin.user_settings.user_settings import user_settings_handler
 from start import admin_command
 import models
+import asyncio
 
 NEW_USER_ID = 0
 
@@ -65,6 +67,23 @@ async def new_user_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
             username=user.username,
             name=user.full_name,
         )
+        add_user_alert = models.Alert.get_by(
+            attr="alert_type", val=models.AlertType.ADD_USER
+        )
+        if add_user_alert.is_on and add_user_alert.dest != models.AlertDest.NONE:
+            if add_user_alert.dest == models.AlertDest.BOTH:
+                users = models.Admin.get_admin_ids() + models.User.get_users()
+            elif add_user_alert.dest == models.AlertDest.ADMINS:
+                users = models.Admin.get_admin_ids()
+            elif add_user_alert.dest == models.AlertDest.USERS:
+                users = models.User.get_users()
+            asyncio.create_task(
+                send_alert(
+                    msg=f"مستخدم جديد {get_user_display_name(user=user, tagged=True)} تمت إضافته 🚨",
+                    users=models.Admin.get_admin_ids(),
+                    context=context,
+                )
+            )
         await update.message.reply_text(
             text="تمت إضافة المستخدم بنجاح ✅",
             reply_markup=ReplyKeyboardRemove(),

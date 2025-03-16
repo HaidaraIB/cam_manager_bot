@@ -1,0 +1,1 @@
+from admin.alerts_settings.alerts_settings import alerts_settings_handler

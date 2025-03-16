@@ -11,6 +11,7 @@ import models
 import re
 import pathlib
 import os
+import asyncio
 from common.keyboards import (
     build_keyboard,
     build_back_button,
@@ -30,6 +31,7 @@ from common.back_to_home_page import (
     back_to_user_home_page_button,
     back_to_user_home_page_handler,
 )
+from common.common import send_alert
 from cameras_settings.cameras_settings import cameras_settings_handler
 from start import admin_command
 
@@ -416,17 +418,36 @@ async def update_cam_type_and_status(
     is_user = User().filter(update)
     if update.effective_chat.type == Chat.PRIVATE and (is_admin or is_user):
         cam_id = context.user_data["cam_id"]
-        await models.Camera.update(
-            cam_id=cam_id,
-            attrs=[
-                (
-                    "status"
-                    if update.callback_query.data in ["connected", "disconnected"]
-                    else "cam_type"
+        cam = models.Camera.get_by(attr="id", val=cam_id)
+        new_val = update.callback_query.data
+        attr = "status" if new_val in ["connected", "disconnected"] else "cam_type"
+        if not getattr(cam, attr) == new_val:
+            await models.Camera.update(
+                cam_id=cam_id,
+                attrs=[attr],
+                new_vals=[new_val],
+            )
+            status_update_alert = models.Alert.get_by(
+                attr="alert_type", val=models.AlertType.STATUS_UPDATE
+            )
+            if (
+                new_val in ["connected", "disconnected"]
+                and status_update_alert.is_on
+                and status_update_alert.dest != models.AlertDest.NONE
+            ):
+                if status_update_alert.dest == models.AlertDest.BOTH:
+                    users = models.Admin.get_admin_ids() + models.User.get_users()
+                elif status_update_alert.dest == models.AlertDest.ADMINS:
+                    users = models.Admin.get_admin_ids()
+                elif status_update_alert.dest == models.AlertDest.USERS:
+                    users = models.User.get_users()
+                asyncio.create_task(
+                    send_alert(
+                        msg=f"تم تحديث حالة الكاميرا <code>{cam.name}</code> إلى <code>{'متصل' if new_val=='connected' else 'غير متصل'}</code> 🚨",
+                        users=users,
+                        context=context,
+                    )
                 )
-            ],
-            new_vals=[update.callback_query.data],
-        )
         await update.callback_query.answer(
             text="تم تحديث الكاميرا بنجاح ✅",
             show_alert=True,

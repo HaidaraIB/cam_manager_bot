@@ -20,6 +20,8 @@ from common.common import check_hidden_keyboard
 
 async def inits(app: Application):
     await models.Admin.add_new_admin(admin_id=int(os.getenv("OWNER_ID")))
+    for alert_type in models.AlertType:
+        await models.Alert.add(alert_type=alert_type)
 
 
 async def set_commands(update: Update, context: ContextTypes.DEFAULT_TYPE):

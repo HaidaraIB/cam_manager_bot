@@ -9,6 +9,7 @@ from common.back_to_home_page import (
 from admin.user_settings.user_settings import user_settings_handler
 from custom_filters import Admin
 from common.constants import *
+from common.common import get_user_display_name
 import models
 
 
@@ -25,7 +26,7 @@ async def remove_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
         admin_ids_keyboard = [
             [
                 InlineKeyboardButton(
-                    text=("@" + user.username) if user.username else user.name,
+                    text=get_user_display_name(user),
                     callback_data=str(user.id),
                 ),
             ]

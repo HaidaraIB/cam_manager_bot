@@ -11,6 +11,7 @@ from common.force_join import check_joined_handler
 
 from user.user_calls import *
 
+from admin.alerts_settings import *
 from admin.admin_calls import *
 from admin.admin_settings import *
 from admin.user_settings import *
@@ -38,6 +39,8 @@ def main():
     app.add_handler(add_camera_handler)
     app.add_handler(list_cameras_handler)
     app.add_handler(cameras_settings_handler)
+
+    app.add_handler(alerts_settings_handler)
 
     # USER SETTINGS
     app.add_handler(user_settings_handler)

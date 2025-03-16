@@ -8,7 +8,7 @@ from telegram.ext import (
 )
 
 from custom_filters import Admin, User
-
+from common.common import send_alert
 from cameras_settings.common import (
     build_add_camera_methods_keyboard,
     stringify_cam,
@@ -23,11 +23,12 @@ from common.back_to_home_page import (
     back_to_user_home_page_handler,
 )
 from common.constants import *
-from common.keyboards import build_back_button, build_admin_keyboard
+from common.keyboards import build_back_button
 import models
 import pathlib
 import os
 import re
+import asyncio
 
 (
     ENTRY_TYPE,
@@ -548,6 +549,24 @@ async def confirm_add_cam(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await models.Camera.add(context.user_data)
 
+        add_cam_alert = models.Alert.get_by(
+            attr="alert_type", val=models.AlertType.ADD_CAM
+        )
+        if add_cam_alert.is_on and add_cam_alert.dest != models.AlertDest.NONE:
+            if add_cam_alert.dest == models.AlertDest.BOTH:
+                users = models.Admin.get_admin_ids() + models.User.get_users()
+            elif add_cam_alert.dest == models.AlertDest.ADMINS:
+                users = models.Admin.get_admin_ids()
+            elif add_cam_alert.dest == models.AlertDest.USERS:
+                users = models.User.get_users()
+            asyncio.create_task(
+                send_alert(
+                    msg=f"كاميرا جديدة <code>{context.user_data['name']}</code> تمت إضافتها 🚨",
+                    users=users,
+                    context=context,
+                )
+            )
+
         await update.callback_query.answer(
             text="تمت إضافة الكاميرا بنجاح ✅",
             show_alert=True,
@@ -641,6 +660,24 @@ async def get_photo_in_auto_entry_mode(
         context.user_data["photo"] = archive_msg.photo[-1].file_id
 
         await models.Camera.add(context.user_data)
+
+        add_cam_alert = models.Alert.get_by(
+            attr="alert_type", val=models.AlertType.ADD_CAM
+        )
+        if add_cam_alert.is_on and add_cam_alert.dest != models.AlertDest.NONE:
+            if add_cam_alert.dest == models.AlertDest.BOTH:
+                users = models.Admin.get_admin_ids() + models.User.get_users()
+            elif add_cam_alert.dest == models.AlertDest.ADMINS:
+                users = models.Admin.get_admin_ids()
+            elif add_cam_alert.dest == models.AlertDest.USERS:
+                users = models.User.get_users()
+            asyncio.create_task(
+                send_alert(
+                    msg=f"كاميرا جديدة <code>{context.user_data['name']}</code> تمت إضافتها 🚨",
+                    users=users,
+                    context=context,
+                )
+            )
 
         await update.message.reply_photo(
             photo=context.user_data["photo"],
