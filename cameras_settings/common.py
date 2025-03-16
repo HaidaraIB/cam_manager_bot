@@ -149,7 +149,7 @@ def stringify_cam(
                 f"🔑 Admin Password: <code>{cam_data['admin_pass']}</code>\n"
                 f"👤 User Username: <code>{cam_data['user']}</code>\n"
                 f"🔐 User Password: <code>{cam_data['user_pass']}</code>\n"
-                f"🔖 Serial Number: </code>{cam_data['serial']}</code>\n"
+                f"🔖 Serial Number: <code>{cam_data['serial']}</code>\n"
                 f"📷 Type: <b>{cam_data['cam_type']}</b>\n"
                 f"📶 Status: <b>{cam_data['status']}</b>\n"
                 f"📍 Location: <b>{cam_data['location']}</b>"
