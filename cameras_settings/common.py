@@ -49,12 +49,18 @@ def build_update_camera_keyboard(for_admin: bool):
         keyboard = [
             [
                 InlineKeyboardButton(
+                    text="إضافة صورة",
+                    callback_data="update_cam_add_new_photo",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
                     text="الاسم",
                     callback_data="update_cam_name",
                 ),
                 InlineKeyboardButton(
-                    text="الصورة",
-                    callback_data="update_cam_photo",
+                    text="port",
+                    callback_data="update_cam_port",
                 ),
                 InlineKeyboardButton(
                     text="ip",
@@ -62,10 +68,6 @@ def build_update_camera_keyboard(for_admin: bool):
                 ),
             ],
             [
-                InlineKeyboardButton(
-                    text="port",
-                    callback_data="update_cam_port",
-                ),
                 InlineKeyboardButton(
                     text="admin user",
                     callback_data="update_cam_admin_user",
@@ -84,16 +86,18 @@ def build_update_camera_keyboard(for_admin: bool):
                     text="user password",
                     callback_data="update_cam_user_password",
                 ),
+            ],
+            [
                 InlineKeyboardButton(
                     text="النوع",
                     callback_data="update_cam_cam_type",
                 ),
-            ],
-            [
                 InlineKeyboardButton(
                     text="الحالة",
                     callback_data="update_cam_status",
                 ),
+            ],
+            [
                 InlineKeyboardButton(
                     text="الموقع",
                     callback_data="update_cam_location",
@@ -195,3 +199,10 @@ def stringify_cam(
                 f"📍 Location: <b>{cam.location}</b>"
             )
         )
+
+
+def calc_cam_photos_count(serial: str):
+    cam = models.Camera.get_by(attr="serial", val=serial)
+    photos = models.CamPhoto.get_by(attr="cam_id", val=cam.id, all=True)
+    cam_photos_count = len(photos) + 1
+    return cam_photos_count

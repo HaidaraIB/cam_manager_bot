@@ -1,4 +1,11 @@
-from telegram import Update, Chat, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram import (
+    Update,
+    Chat,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+    InputMediaPhoto,
+    PhotoSize,
+)
 from telegram.ext import (
     ContextTypes,
     ConversationHandler,
@@ -22,6 +29,7 @@ from cameras_settings.common import (
     build_single_camera_settings_keyboard,
     build_cameras_settings_keyboard,
     build_update_camera_keyboard,
+    calc_cam_photos_count,
     USER_UPDATE_CAM_CONSTRUCITONS,
     ADMIN_UPDATE_CAM_CONSTRUCTIONS,
 )
@@ -95,10 +103,25 @@ async def choose_camera(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else back_to_user_home_page_button[0]
         )
         await update.callback_query.delete_message()
-        await context.bot.send_photo(
+        cam_photos = models.CamPhoto.get_by(attr="cam_id", val=cam_id, all=True)
+        await context.bot.send_media_group(
             chat_id=update.effective_chat.id,
-            photo=cam.photo,
+            media=[
+                InputMediaPhoto(
+                    media=PhotoSize(
+                        file_id=cam_photo.file_id,
+                        file_unique_id=cam_photo.file_unique_id,
+                        width=cam_photo.width,
+                        height=cam_photo.height,
+                    )
+                )
+                for cam_photo in cam_photos
+            ],
             caption=stringify_cam(cam=cam, for_admin=is_admin),
+        )
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="اختر أحد الخيارات أدناه",
             reply_markup=InlineKeyboardMarkup(keyboard),
         )
         return SETTING
@@ -125,21 +148,14 @@ async def choose_setting(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if is_admin
                 else back_to_user_home_page_button[0]
             )
-            if update.effective_message.photo:
-                await update.callback_query.edit_message_caption(
-                    caption=(
-                        update.effective_message.caption
-                        + "\n\n"
-                        + (
-                            ADMIN_UPDATE_CAM_CONSTRUCTIONS
-                            if is_admin
-                            else USER_UPDATE_CAM_CONSTRUCITONS
-                        )
-                    ),
-                    reply_markup=InlineKeyboardMarkup(keyboard),
-                )
-            else:
-                await update.callback_query.delete_message()
+            await update.callback_query.edit_message_text(
+                text=(
+                    ADMIN_UPDATE_CAM_CONSTRUCTIONS
+                    if is_admin
+                    else USER_UPDATE_CAM_CONSTRUCITONS
+                ),
+                reply_markup=InlineKeyboardMarkup(keyboard),
+            )
             return UPDATE_SETTING
         elif setting.startswith("delete"):
             if not is_admin:
@@ -151,11 +167,8 @@ async def choose_setting(update: Update, context: ContextTypes.DEFAULT_TYPE):
             keyboard = build_confirmation_keyboard(f"delete_camera")
             keyboard.append(build_back_button("back_to_choose_setting"))
             keyboard.append(back_to_admin_home_page_button[0])
-            await update.callback_query.edit_message_caption(
-                caption=(
-                    update.effective_message.caption
-                    + "\n\n<b>هل أنت متأكد من أنك تريد حذف هذه الكاميرا؟</b>"
-                ),
+            await update.callback_query.edit_message_text(
+                text="<b>هل أنت متأكد من أنك تريد حذف هذه الكاميرا؟</b>",
                 reply_markup=InlineKeyboardMarkup(keyboard),
             )
             return CONFIRM_DELETE
@@ -245,12 +258,8 @@ async def confirm_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
             keyboard = build_update_camera_keyboard(for_admin=True)
             keyboard.append(build_back_button("back_to_choose_setting"))
             keyboard.append(back_to_admin_home_page_button[0])
-            await update.callback_query.edit_message_caption(
-                caption=(
-                    update.effective_message.caption
-                    + "\n\n"
-                    + ADMIN_UPDATE_CAM_CONSTRUCTIONS
-                ),
+            await update.callback_query.edit_message_text(
+                text=ADMIN_UPDATE_CAM_CONSTRUCTIONS,
                 reply_markup=InlineKeyboardMarkup(keyboard),
             )
             return UPDATE_SETTING
@@ -314,17 +323,14 @@ async def choose_update_setting(update: Update, context: ContextTypes.DEFAULT_TY
                     ],
                     *back_buttons,
                 ]
-            await update.callback_query.edit_message_caption(
-                caption=(
-                    stringify_cam(cam=cam, for_admin=is_admin)
-                    + "\n\nاختر القيمة الجديدة"
-                ),
+            await update.callback_query.edit_message_text(
+                text="اختر القيمة الجديدة",
                 reply_markup=InlineKeyboardMarkup(keyboard),
             )
             return UPDATE_CAM_TYPE_AND_STATUS
 
         await update.callback_query.answer()
-        if attr == "photo":
+        if attr == "add_new_photo":
             text = "أرسل الصورة الجديدة 🖼"
         else:
             text = (
@@ -390,18 +396,21 @@ async def get_new_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type == Chat.PRIVATE and Admin().filter(update):
         cam_id = context.user_data["cam_id"]
         cam = models.Camera.get_by(attr="id", val=cam_id)
+        cam_photos_count = calc_cam_photos_count(serial=cam.serial)
+
         photo = await context.bot.get_file(update.message.photo[-1].file_id)
-        os.remove(pathlib.Path(f"uploads/{cam.serial}.jpg"))
-        await photo.download_to_drive(pathlib.Path(f"uploads/{cam.serial}.jpg"))
+        await photo.download_to_drive(pathlib.Path(f"uploads/{cam.serial}_{cam_photos_count}.jpg"))
 
         archive_msg = await context.bot.send_photo(
             chat_id=int(os.getenv("PHOTOS_ARCHIVE")),
             photo=update.message.photo[-1].file_id,
         )
-        await models.Camera.update(
+        await models.CamPhoto.add(
             cam_id=cam_id,
-            attrs=["photo"],
-            new_vals=[archive_msg.photo[-1].file_id],
+            file_id=archive_msg.photo[-1].file_id,
+            file_unique_id=archive_msg.photo[-1].file_unique_id,
+            width=archive_msg.photo[-1].width,
+            height=archive_msg.photo[-1].height,
         )
         await update_cam_success(
             update=update,
@@ -464,18 +473,10 @@ async def update_cam_type_and_status(
 async def confirm_delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type == Chat.PRIVATE and Admin().filter(update):
         cam_id = context.user_data["cam_id"]
-        cam = models.Camera.get_by(attr="id", val=cam_id)
         if update.callback_query.data.startswith("yes"):
             await models.Camera.delete(cam_id)
-            await update.callback_query.answer(
-                text="تم حذف الكاميرا بنجاح ✅",
-                show_alert=True,
-            )
-            await update.callback_query.edit_message_caption(
-                caption=(
-                    stringify_cam(cam=cam, for_admin=True)
-                    + "\n\nتم حذف الكاميرا بنجاح ✅"
-                ),
+            await update.callback_query.edit_message_text(
+                text="تم حذف الكاميرا بنجاح ✅"
             )
             cameras = models.Camera.get_by(all=True)
             if not cameras:
@@ -500,12 +501,11 @@ async def confirm_delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return CAMERA
         else:
-            cam = models.Camera.get_by(attr="id", val=cam_id)
             keyboard = build_single_camera_settings_keyboard(for_admin=True)
             keyboard.append(build_back_button("back_to_choose_camera"))
             keyboard.append(back_to_admin_home_page_button[0])
-            await update.callback_query.edit_message_caption(
-                caption=stringify_cam(cam=cam, for_admin=True),
+            await update.callback_query.edit_message_text(
+                text="اختر أحد الخيارات أدناه",
                 reply_markup=InlineKeyboardMarkup(keyboard),
             )
             return SETTING
@@ -532,10 +532,25 @@ async def update_cam_success(
         if is_admin
         else back_to_user_home_page_button[0]
     )
-    await context.bot.send_photo(
+    cam_photos = models.CamPhoto.get_by(attr="cam_id", val=cam_id, all=True)
+    await context.bot.send_media_group(
         chat_id=update.effective_chat.id,
-        photo=cam.photo,
+        media=[
+            InputMediaPhoto(
+                media=PhotoSize(
+                    file_id=cam_photo.file_id,
+                    file_unique_id=cam_photo.file_unique_id,
+                    width=cam_photo.width,
+                    height=cam_photo.height,
+                )
+            )
+            for cam_photo in cam_photos
+        ],
         caption=stringify_cam(cam=cam, for_admin=is_admin),
+    )
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text="اختر أحد الخيارات أدناه",
         reply_markup=InlineKeyboardMarkup(keyboard),
     )
 

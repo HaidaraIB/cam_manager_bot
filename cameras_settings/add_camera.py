@@ -1,18 +1,23 @@
-from telegram import Update, Chat, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram import (
+    Update,
+    Chat,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+    InputMediaPhoto,
+    PhotoSize,
+)
 from telegram.ext import (
     ContextTypes,
     ConversationHandler,
     CallbackQueryHandler,
     MessageHandler,
+    CommandHandler,
     filters,
 )
 
 from custom_filters import Admin, User
 from common.common import send_alert
-from cameras_settings.common import (
-    build_add_camera_methods_keyboard,
-    stringify_cam,
-)
+from cameras_settings.common import build_add_camera_methods_keyboard, stringify_cam
 from cameras_settings.cameras_settings import cameras_settings_handler
 from start import admin_command
 
@@ -34,8 +39,8 @@ import asyncio
     ENTRY_TYPE,
     INSTITUTION,
     CAM_INFO,
-    PHOTO_IN_AUTO_ENTRY_MODE,
-    PHOTO,
+    PHOTOS_IN_AUTO_ENTRY_MODE,
+    PHOTOS,
     IP,
     PORT,
     ADMIN_USER,
@@ -127,28 +132,34 @@ async def get_institution(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data["name"] = name
             await update.message.reply_text(
                 text=(
-                    f"سيكون اسم الكاميرا: <code>{name}</code>\n" "أرسل صورة الكاميرا"
+                    f"سيكون اسم الكاميرا: <code>{name}</code>\n"
+                    "أرسل الرقم التسلسلي\n"
+                    "<b>يجب أن يبدأ ب-SN</b>"
                 ),
                 reply_markup=InlineKeyboardMarkup(back_buttons),
             )
         else:
             name = context.user_data["name"]
             await update.callback_query.edit_message_text(
-                text=(f"اسم الكاميرا: <code>{name}</code>\n" "أرسل صورة الكاميرا"),
+                text=(
+                    f"سيكون اسم الكاميرا: <code>{name}</code>\n"
+                    "أرسل الرقم التسلسلي\n"
+                    "<b>يجب أن يبدأ ب-SN</b>"
+                ),
                 reply_markup=InlineKeyboardMarkup(back_buttons),
             )
-        return PHOTO
+        return SERIAL
 
 
 back_to_get_institution = choose_entry_type
 
 
-async def get_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def get_serial(update: Update, context: ContextTypes.DEFAULT_TYPE):
     is_admin = Admin().filter(update)
     is_user = User().filter(update)
     if update.effective_chat.type == Chat.PRIVATE and (is_admin or is_user):
         back_buttons = [
-            build_back_button("back_to_get_photo"),
+            build_back_button("back_to_get_serial"),
             (
                 back_to_admin_home_page_button[0]
                 if is_admin
@@ -156,7 +167,83 @@ async def get_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ),
         ]
         if update.message:
-            context.user_data["photo"] = update.message.photo[-1].file_id
+            serial = update.message.text
+            if models.Camera.get_by(attr="serial", val=serial):
+                await update.message.reply_text(
+                    text="رقم تسلسلي مكرر ❗️",
+                )
+                return
+            context.user_data["serial"] = serial
+            context.user_data["temp_photos"] = []
+            await update.message.reply_text(
+                text=(
+                    "أرسل صور الكاميرا 📸\n"
+                    "<b>ملاحظة:</b> أرسل صورة واحدة في كل مرة. عند الانتهاء اضغط /get_photos_finish"
+                ),
+                reply_markup=InlineKeyboardMarkup(back_buttons),
+            )
+        else:
+            await update.callback_query.edit_message_text(
+                text=(
+                    "أرسل صور الكاميرا 📸\n"
+                    "<b>ملاحظة:</b> أرسل صورة واحدة في كل مرة. عند الانتهاء اضغط /get_photos_finish"
+                ),
+                reply_markup=InlineKeyboardMarkup(back_buttons),
+            )
+        return PHOTOS
+
+
+back_to_get_serial = get_institution
+
+
+async def get_photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    is_admin = Admin().filter(update)
+    is_user = User().filter(update)
+    if update.effective_chat.type == Chat.PRIVATE and (is_admin or is_user):
+        back_buttons = [
+            build_back_button("back_to_get_serial"),
+            (
+                back_to_admin_home_page_button[0]
+                if is_admin
+                else back_to_user_home_page_button[0]
+            ),
+        ]
+        photo = update.message.photo[-1]
+        context.user_data["temp_photos"].append(
+            {
+                "file_id": photo.file_id,
+                "file_unique_id": photo.file_unique_id,
+                "width": photo.width,
+                "height": photo.height,
+            }
+        )
+        cam_photos_count = len(context.user_data["temp_photos"])
+
+        await update.message.reply_text(
+            text=(
+                f"تم استلام الصورة رقم <b>{cam_photos_count}</b> ✅\n"
+                "عند الانتهاء اضغط /get_photos_finish"
+            ),
+            reply_markup=InlineKeyboardMarkup(back_buttons),
+        )
+
+
+async def get_photos_finish(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    is_admin = Admin().filter(update)
+    is_user = User().filter(update)
+    if update.effective_chat.type == Chat.PRIVATE and (is_admin or is_user):
+        back_buttons = [
+            build_back_button("back_to_get_photos"),
+            (
+                back_to_admin_home_page_button[0]
+                if is_admin
+                else back_to_user_home_page_button[0]
+            ),
+        ]
+        if update.message:
+            if not context.user_data["temp_photos"]:
+                await update.message.reply_text(text="يجب إضافة صورة واحدة على الأقل ❗️")
+                return
             await update.message.reply_text(
                 text="أرسل الip",
                 reply_markup=InlineKeyboardMarkup(back_buttons),
@@ -166,11 +253,10 @@ async def get_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text="أرسل الip",
                 reply_markup=InlineKeyboardMarkup(back_buttons),
             )
-
         return IP
 
 
-back_to_get_photo = get_institution
+back_to_get_photos = get_serial
 
 
 async def get_ip(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -200,7 +286,7 @@ async def get_ip(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return PORT
 
 
-back_to_get_ip = get_photo
+back_to_get_ip = get_photos_finish
 
 
 async def get_port(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -326,66 +412,75 @@ async def get_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     is_admin = Admin().filter(update)
     is_user = User().filter(update)
     if update.effective_chat.type == Chat.PRIVATE and (is_admin or is_user):
-        back_buttons = [
-            build_back_button("back_to_get_user"),
-            (
-                back_to_admin_home_page_button[0]
-                if is_admin
-                else back_to_user_home_page_button[0]
-            ),
-        ]
         if update.message or update.callback_query.data.startswith("back"):
             if update.message:
+                back_buttons = [
+                    build_back_button("back_to_get_user"),
+                    (
+                        back_to_admin_home_page_button[0]
+                        if is_admin
+                        else back_to_user_home_page_button[0]
+                    ),
+                ]
                 context.user_data["user"] = update.message.text
-            await update.message.reply_text(
-                text=f"أرسل الuser password\n",
-                reply_markup=InlineKeyboardMarkup(back_buttons),
-            )
-            return USER_PASS
+                await update.message.reply_text(
+                    text="أرسل الuser pass",
+                    reply_markup=InlineKeyboardMarkup(back_buttons),
+                )
+                return USER_PASS
+            else:
+                keyboard = [
+                    [
+                        InlineKeyboardButton(
+                            text="تخطي ⏭",
+                            callback_data="skip_user",
+                        )
+                    ],
+                    build_back_button("back_to_get_admin_pass"),
+                    (
+                        back_to_admin_home_page_button[0]
+                        if is_admin
+                        else back_to_user_home_page_button[0]
+                    ),
+                ]
+                await update.callback_query.edit_message_text(
+                    text="أرسل الuser\n\n" "<i>اختياري</i>",
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                )
+                return USER
 
         elif update.callback_query.data == "skip_user":
+            keyboard = [
+                [
+                    InlineKeyboardButton(
+                        text="37777,80 (dahua)",
+                        callback_data="dahua",
+                    ),
+                    InlineKeyboardButton(
+                        text="9000-8000 (hikvision)",
+                        callback_data="hikvision",
+                    ),
+                ],
+                build_back_button("back_to_get_user"),
+                (
+                    back_to_admin_home_page_button[0]
+                    if is_admin
+                    else back_to_user_home_page_button[0]
+                ),
+            ]
             context.user_data["user"] = ""
             context.user_data["user_pass"] = ""
             await update.callback_query.edit_message_text(
-                text=("أرسل الرقم التسلسلي\n" "<b>يجب أن يبدأ ب-SN</b>"),
-                reply_markup=InlineKeyboardMarkup(back_buttons),
+                text="اختر نوع الكاميرا",
+                reply_markup=InlineKeyboardMarkup(keyboard),
             )
-            return SERIAL
+            return CAM_TYPE
 
 
 back_to_get_user = get_admin_pass
 
 
 async def get_user_pass(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    is_admin = Admin().filter(update)
-    is_user = User().filter(update)
-    if update.effective_chat.type == Chat.PRIVATE and (is_admin or is_user):
-        back_buttons = [
-            build_back_button("back_to_get_user_pass"),
-            (
-                back_to_admin_home_page_button[0]
-                if is_admin
-                else back_to_user_home_page_button[0]
-            ),
-        ]
-        if update.message:
-            context.user_data["user_pass"] = update.message.text
-            await update.message.reply_text(
-                text=("أرسل الرقم التسلسلي\n" "<b>يجب أن يبدأ ب-SN</b>"),
-                reply_markup=InlineKeyboardMarkup(back_buttons),
-            )
-        else:
-            await update.callback_query.edit_message_text(
-                text=("أرسل الرقم التسلسلي\n" "<b>يجب أن يبدأ ب-SN</b>"),
-                reply_markup=InlineKeyboardMarkup(back_buttons),
-            )
-        return SERIAL
-
-
-back_to_get_user_pass = get_user
-
-
-async def get_serial(update: Update, context: ContextTypes.DEFAULT_TYPE):
     is_admin = Admin().filter(update)
     is_user = User().filter(update)
     if update.effective_chat.type == Chat.PRIVATE and (is_admin or is_user):
@@ -400,7 +495,7 @@ async def get_serial(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     callback_data="hikvision",
                 ),
             ],
-            build_back_button("back_to_get_serial"),
+            build_back_button("back_to_get_user_pass"),
             (
                 back_to_admin_home_page_button[0]
                 if is_admin
@@ -408,7 +503,7 @@ async def get_serial(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ),
         ]
         if update.message:
-            context.user_data["serial"] = update.message.text
+            context.user_data["user_pass"] = update.message.text
             await update.message.reply_text(
                 text="اختر نوع الكاميرا",
                 reply_markup=InlineKeyboardMarkup(keyboard),
@@ -421,7 +516,7 @@ async def get_serial(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return CAM_TYPE
 
 
-back_to_get_serial = get_user_pass
+back_to_get_user_pass = get_user
 
 
 async def choose_cam_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -455,7 +550,7 @@ async def choose_cam_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return STATUS
 
 
-back_to_choose_cam_type = get_serial
+back_to_choose_cam_type = get_user_pass
 
 
 async def choose_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -520,12 +615,23 @@ async def get_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         if update.message:
             context.user_data["location"] = update.message.text
-            await update.message.reply_photo(
-                photo=context.user_data["photo"],
-                caption=(
-                    stringify_cam(cam_data=context.user_data, for_admin=is_admin)
-                    + "\n\n"
-                    + "هل أنت متأكد من إضافة هذه الكاميرا؟\n\n"
+            await update.message.reply_media_group(
+                media=[
+                    InputMediaPhoto(
+                        media=PhotoSize(
+                            file_id=photo["file_id"],
+                            file_unique_id=photo["file_unique_id"],
+                            width=photo["width"],
+                            height=photo["height"],
+                        )
+                    )
+                    for photo in context.user_data["temp_photos"]
+                ],
+                caption=stringify_cam(cam_data=context.user_data, for_admin=is_admin),
+            )
+            await update.message.reply_text(
+                text=(
+                    "هل أنت متأكد من إضافة هذه الكاميرا؟\n\n"
                     + "للإلغاء عد إلى القائمة الرئيسية."
                 ),
                 reply_markup=InlineKeyboardMarkup(back_buttons),
@@ -540,18 +646,23 @@ async def confirm_add_cam(update: Update, context: ContextTypes.DEFAULT_TYPE):
     is_admin = Admin().filter(update)
     is_user = User().filter(update)
     if update.effective_chat.type == Chat.PRIVATE and (is_admin or is_user):
-        photo = await context.bot.get_file(context.user_data["photo"])
-        await photo.download_to_drive(
-            pathlib.Path(f"uploads/{context.user_data['serial']}.jpg")
-        )
-
-        archive_msg = await context.bot.send_photo(
-            chat_id=int(os.getenv("PHOTOS_ARCHIVE")),
-            photo=context.user_data["photo"],
-        )
-        context.user_data["photo"] = archive_msg.photo[-1].file_id
-
-        await models.Camera.add(context.user_data)
+        cam_id = await models.Camera.add(context.user_data)
+        for i, p in enumerate(context.user_data["temp_photos"]):
+            photo = await context.bot.get_file(file_id=p["file_id"])
+            await photo.download_to_drive(
+                pathlib.Path(f"uploads/{context.user_data['serial']}_{i + 1}.jpg")
+            )
+            archive_msg = await context.bot.send_photo(
+                chat_id=int(os.getenv("PHOTOS_ARCHIVE")),
+                photo=p["file_id"],
+            )
+            await models.CamPhoto.add(
+                cam_id=cam_id,
+                file_id=archive_msg.photo[-1].file_id,
+                file_unique_id=archive_msg.photo[-1].file_unique_id,
+                width=archive_msg.photo[-1].width,
+                height=archive_msg.photo[-1].height,
+            )
 
         add_cam_alert = models.Alert.get_by(
             attr="alert_type", val=models.AlertType.ADD_CAM
@@ -575,11 +686,8 @@ async def confirm_add_cam(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text="تمت إضافة الكاميرا بنجاح ✅",
             show_alert=True,
         )
-        await update.callback_query.edit_message_caption(
-            caption=(
-                stringify_cam(cam_data=context.user_data, for_admin=is_admin)
-                + "\n\nتمت إضافة الكاميرا بنجاح ✅"
-            )
+        await update.callback_query.edit_message_text(
+            text="تمت إضافة الكاميرا بنجاح ✅"
         )
         return ConversationHandler.END
 
@@ -629,44 +737,87 @@ async def get_cam_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["status"] = "connected"
         context.user_data["location"] = "N/A"
         context.user_data["serial"] = serial_number
-        try:
-            await update.message.reply_text(
-                text=(
-                    f"تم تحليل البيانات ✅\n\n"
-                    + stringify_cam(cam_data=context.user_data, for_admin=is_admin)
-                    + "\n\n"
-                    + "أرسل صورة الكاميرا 📸"
-                ),
-                reply_markup=InlineKeyboardMarkup(back_buttons),
-            )
-        except:
-            import traceback
-            traceback.print_exc()
-        return PHOTO_IN_AUTO_ENTRY_MODE
+        context.user_data["temp_photos"] = []
+
+        await update.message.reply_text(
+            text=(
+                f"تم تحليل البيانات ✅\n\n"
+                + stringify_cam(cam_data=context.user_data, for_admin=is_admin)
+                + "\n\n"
+                + "أرسل صور الكاميرا 📸\n"
+                + "<b>ملاحظة:</b> أرسل صورة واحدة في كل مرة. عند الانتهاء اضغط /get_photos_finish"
+            ),
+            reply_markup=InlineKeyboardMarkup(back_buttons),
+        )
+        return PHOTOS_IN_AUTO_ENTRY_MODE
 
 
 back_to_get_cam_info = choose_entry_type
 
 
-async def get_photo_in_auto_entry_mode(
+async def get_photos_in_auto_entry_mode(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ):
     is_admin = Admin().filter(update)
     is_user = User().filter(update)
     if update.effective_chat.type == Chat.PRIVATE and (is_admin or is_user):
-        context.user_data["photo"] = update.message.photo[-1].file_id
-        photo = await context.bot.get_file(context.user_data["photo"])
-        await photo.download_to_drive(
-            pathlib.Path(f"uploads/{context.user_data['serial']}.jpg")
+        photo = update.message.photo[-1]
+        context.user_data["temp_photos"].append(
+            {
+                "file_id": photo.file_id,
+                "file_unique_id": photo.file_unique_id,
+                "width": photo.width,
+                "height": photo.height,
+            }
+        )
+        cam_photos_count = len(context.user_data["temp_photos"])
+
+        back_buttons = [
+            build_back_button("back_to_get_cam_info"),
+            (
+                back_to_admin_home_page_button[0]
+                if is_admin
+                else back_to_user_home_page_button[0]
+            ),
+        ]
+
+        await update.message.reply_text(
+            text=(
+                f"تم استلام الصورة رقم <b>{cam_photos_count}</b> ✅\n"
+                "عند الانتهاء اضغط /get_photos_finish"
+            ),
+            reply_markup=InlineKeyboardMarkup(back_buttons),
         )
 
-        archive_msg = await context.bot.send_photo(
-            chat_id=int(os.getenv("PHOTOS_ARCHIVE")),
-            photo=context.user_data["photo"],
-        )
-        context.user_data["photo"] = archive_msg.photo[-1].file_id
 
-        await models.Camera.add(context.user_data)
+async def get_photos_finish_in_auto_entry_mode(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+):
+    is_admin = Admin().filter(update)
+    is_user = User().filter(update)
+    if update.effective_chat.type == Chat.PRIVATE and (is_admin or is_user):
+        if not context.user_data["temp_photos"]:
+            await update.message.reply_text(text="يجب إضافة صورة واحدة على الأقل ❗️")
+            return
+        cam_id = await models.Camera.add(cam_data=context.user_data)
+        for i, p in enumerate(context.user_data["temp_photos"]):
+
+            photo = await context.bot.get_file(file_id=p["file_id"])
+            await photo.download_to_drive(
+                pathlib.Path(f"uploads/{context.user_data['serial']}_{i + 1}.jpg")
+            )
+            archive_msg = await context.bot.send_photo(
+                chat_id=int(os.getenv("PHOTOS_ARCHIVE")),
+                photo=p["file_id"],
+            )
+            await models.CamPhoto.add(
+                cam_id=cam_id,
+                file_id=archive_msg.photo[-1].file_id,
+                file_unique_id=archive_msg.photo[-1].file_unique_id,
+                width=archive_msg.photo[-1].width,
+                height=archive_msg.photo[-1].height,
+            )
+        cam_photos = models.CamPhoto.get_by(attr="cam_id", val=cam_id, all=True)
 
         add_cam_alert = models.Alert.get_by(
             attr="alert_type", val=models.AlertType.ADD_CAM
@@ -686,8 +837,18 @@ async def get_photo_in_auto_entry_mode(
                 )
             )
 
-        await update.message.reply_photo(
-            photo=context.user_data["photo"],
+        await update.message.reply_media_group(
+            media=[
+                InputMediaPhoto(
+                    media=PhotoSize(
+                        file_id=cam_photo.file_id,
+                        file_unique_id=cam_photo.file_unique_id,
+                        width=cam_photo.width,
+                        height=cam_photo.height,
+                    )
+                )
+                for cam_photo in cam_photos
+            ],
             caption=(
                 stringify_cam(cam_data=context.user_data, for_admin=is_admin)
                 + "\n\nتمت إضافة الكاميرا بنجاح ✅"
@@ -724,17 +885,31 @@ add_camera_handler = ConversationHandler(
                 callback=get_cam_info,
             )
         ],
-        PHOTO_IN_AUTO_ENTRY_MODE: [
+        PHOTOS_IN_AUTO_ENTRY_MODE: [
             MessageHandler(
                 filters=filters.PHOTO,
-                callback=get_photo_in_auto_entry_mode,
+                callback=get_photos_in_auto_entry_mode,
+            ),
+            CommandHandler(
+                "get_photos_finish",
+                get_photos_finish_in_auto_entry_mode,  # returns ConversationHandler.END
+            ),
+        ],
+        SERIAL: [
+            MessageHandler(
+                filters=filters.Regex("^SN-.+$"),
+                callback=get_serial,
             )
         ],
-        PHOTO: [
+        PHOTOS: [
             MessageHandler(
                 filters=filters.PHOTO,
-                callback=get_photo,
-            )
+                callback=get_photos,
+            ),
+            CommandHandler(
+                "get_photos_finish",
+                get_photos_finish,
+            ),
         ],
         IP: [
             MessageHandler(
@@ -774,12 +949,6 @@ add_camera_handler = ConversationHandler(
                 callback=get_user_pass,
             )
         ],
-        SERIAL: [
-            MessageHandler(
-                filters=filters.Regex("^SN-.+$"),
-                callback=get_serial,
-            )
-        ],
         CAM_TYPE: [
             CallbackQueryHandler(
                 choose_cam_type,
@@ -810,7 +979,7 @@ add_camera_handler = ConversationHandler(
         CallbackQueryHandler(back_to_choose_entry_type, "^back_to_choose_entry_type$"),
         CallbackQueryHandler(back_to_get_institution, "^back_to_get_institution$"),
         CallbackQueryHandler(back_to_get_cam_info, "^back_to_get_cam_info$"),
-        CallbackQueryHandler(back_to_get_photo, "^back_to_get_photo$"),
+        CallbackQueryHandler(back_to_get_photos, "^back_to_get_photos$"),
         CallbackQueryHandler(back_to_get_ip, "^back_to_get_ip$"),
         CallbackQueryHandler(back_to_get_port, "^back_to_get_port$"),
         CallbackQueryHandler(back_to_get_admin_user, "^back_to_get_admin_user$"),

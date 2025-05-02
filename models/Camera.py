@@ -1,5 +1,5 @@
 import sqlalchemy as sa
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, relationship
 from models.DB import (
     Base,
     connect_and_close,
@@ -11,7 +11,6 @@ class Camera(Base):
     __tablename__ = "cameras"
     id = sa.Column(sa.Integer, autoincrement=True, primary_key=True)
     name = sa.Column(sa.String)
-    photo = sa.Column(sa.String)
     ip = sa.Column(sa.String)
     port = sa.Column(sa.Integer)
     admin_user = sa.Column(sa.String)
@@ -23,6 +22,8 @@ class Camera(Base):
     location = sa.Column(sa.String)
     serial = sa.Column(sa.String)
 
+    photos = relationship("CamPhoto", back_populates="cam")
+
     @classmethod
     @lock_and_release
     async def add(
@@ -33,7 +34,6 @@ class Camera(Base):
         res = s.execute(
             sa.insert(cls).values(
                 name=cam_data["name"],
-                photo=cam_data["photo"],
                 ip=cam_data["ip"],
                 port=cam_data["port"],
                 admin_user=cam_data["admin_user"],
