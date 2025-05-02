@@ -178,7 +178,7 @@ async def get_serial(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(
                 text=(
                     "أرسل صور الكاميرا 📸\n"
-                    "<b>ملاحظة:</b> أرسل صورة واحدة في كل مرة. عند الانتهاء اضغط /get_photos_finish"
+                    "عند الانتهاء اضغط /get_photos_finish"
                 ),
                 reply_markup=InlineKeyboardMarkup(back_buttons),
             )
@@ -186,7 +186,7 @@ async def get_serial(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.callback_query.edit_message_text(
                 text=(
                     "أرسل صور الكاميرا 📸\n"
-                    "<b>ملاحظة:</b> أرسل صورة واحدة في كل مرة. عند الانتهاء اضغط /get_photos_finish"
+                    "عند الانتهاء اضغط /get_photos_finish"
                 ),
                 reply_markup=InlineKeyboardMarkup(back_buttons),
             )
@@ -745,7 +745,7 @@ async def get_cam_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 + stringify_cam(cam_data=context.user_data, for_admin=is_admin)
                 + "\n\n"
                 + "أرسل صور الكاميرا 📸\n"
-                + "<b>ملاحظة:</b> أرسل صورة واحدة في كل مرة. عند الانتهاء اضغط /get_photos_finish"
+                + "عند الانتهاء اضغط /get_photos_finish"
             ),
             reply_markup=InlineKeyboardMarkup(back_buttons),
         )
@@ -854,8 +854,24 @@ async def get_photos_finish_in_auto_entry_mode(
                 + "\n\nتمت إضافة الكاميرا بنجاح ✅"
             ),
         )
-        return ConversationHandler.END
-
+        back_buttons = [
+            build_back_button("back_to_choose_entry_type"),
+            (
+                back_to_admin_home_page_button[0]
+                if is_admin
+                else back_to_user_home_page_button[0]
+            ),
+        ]
+        await update.message.reply_text(
+            text=(
+                "يمكنك إضافة كاميرا أخرى مباشرة ⚡️\n"
+                "أرسل البيانات النصية للكاميرا ✏️\n\n"
+                "مثال:\n"
+                "<code>192.168.0.1_456_admin_admin_SN-xx00xx00xx00xx0_1</code>"
+            ),
+            reply_markup=InlineKeyboardMarkup(back_buttons),
+        )
+        return CAM_INFO
 
 add_camera_handler = ConversationHandler(
     entry_points=[

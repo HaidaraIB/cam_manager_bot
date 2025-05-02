@@ -21,6 +21,12 @@ def build_cameras_settings_keyboard():
                 callback_data="list_cameras",
             )
         ],
+        [
+            InlineKeyboardButton(
+                text="بحث 🔎",
+                callback_data="search_cameras",
+            )
+        ],
     ]
     return keyboard
 

@@ -44,6 +44,8 @@ from cameras_settings.cameras_settings import cameras_settings_handler
 from start import admin_command
 
 (
+    SEARCH_BY,
+    SEARCH_QUERY,
     CAMERA,
     SETTING,
     CONFIRM_DELETE,
@@ -51,20 +53,88 @@ from start import admin_command
     NEW_VAL,
     UPDATE_CAM_TYPE_AND_STATUS,
     CONFIRM_UPDATE,
-) = range(7)
+) = range(9)
 
+
+async def search_cameras(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    is_admin = Admin().filter(update)
+    is_user = User().filter(update)
+    if update.effective_chat.type == Chat.PRIVATE and (is_admin or is_user):
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    text="الرقم التسلسلي",
+                    callback_data="search_by_serial",
+                ),
+                InlineKeyboardButton(
+                    text="IP",
+                    callback_data="search_by_ip",
+                ),
+            ],
+            build_back_button("back_to_cameras_settings"),
+            (
+                back_to_admin_home_page_button[0]
+                if is_admin
+                else back_to_user_home_page_button[0]
+            ),
+        ]
+        await update.callback_query.edit_message_text(
+            text="البحث حسب",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+        )
+        return SEARCH_BY
+
+
+async def search_by(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    is_admin = Admin().filter(update)
+    is_user = User().filter(update)
+    if update.effective_chat.type == Chat.PRIVATE and (is_admin or is_user):
+        back_buttons = [
+            build_back_button("back_to_search_by"),
+            (
+                back_to_admin_home_page_button[0]
+                if is_admin
+                else back_to_user_home_page_button[0]
+            ),
+        ]
+        if not update.callback_query.data.startswith("back"):
+            context.user_data["search_by"] = update.callback_query.data
+        search_by_dict = {"search_by_serial": "الرقم التسلسلي", "search_by_ip": "الIP"}
+        await update.callback_query.edit_message_text(
+            text=f"أرسل {search_by_dict[context.user_data['search_by']]}",
+            reply_markup=InlineKeyboardMarkup(back_buttons),
+        )
+        return SEARCH_QUERY
+
+back_to_search_by = search_cameras
 
 async def list_cameras(update: Update, context: ContextTypes.DEFAULT_TYPE):
     is_admin = Admin().filter(update)
     is_user = User().filter(update)
     if update.effective_chat.type == Chat.PRIVATE and (is_admin or is_user):
-        cameras = models.Camera.get_by(all=True)
+        if update.message:
+            if context.user_data["search_by"] == "search_by_serial":
+                cameras = models.Camera.get_by(
+                    attr="serial", val=update.message.text, all=True
+                )
+            elif context.user_data["search_by"] == "search_by_ip":
+                cameras = models.Camera.get_by(
+                    attr="ip", val=update.message.text, all=True
+                )
+        else:
+            cameras = models.Camera.get_by(all=True)
         if not cameras:
-            await update.callback_query.answer(
-                text="ليس لديك كاميرات بعد ❗️",
-                show_alert=True,
-            )
-            return ConversationHandler.END
+            if update.callback_query:
+                await update.callback_query.answer(
+                    text="ليس لديك كاميرات بعد ❗️",
+                    show_alert=True,
+                )
+                return ConversationHandler.END
+            else:
+                await update.message.reply_text(
+                    text="لم يتم العثور على نتائج ❗️",
+                )
+                return
         keyboard = build_keyboard(
             columns=1,
             texts=[cam.name for cam in cameras],
@@ -76,12 +146,16 @@ async def list_cameras(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if is_admin
             else back_to_user_home_page_button[0]
         )
-        await update.callback_query.delete_message()
-        await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text="اختر الكاميرا",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-        )
+        if update.message:
+            await update.message.reply_text(
+                text="اختر الكاميرا",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+            )
+        else:
+            await update.callback_query.edit_message_text(
+                text="اختر الكاميرا",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+            )
         return CAMERA
 
 
@@ -399,7 +473,9 @@ async def get_new_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cam_photos_count = calc_cam_photos_count(serial=cam.serial)
 
         photo = await context.bot.get_file(update.message.photo[-1].file_id)
-        await photo.download_to_drive(pathlib.Path(f"uploads/{cam.serial}_{cam_photos_count}.jpg"))
+        await photo.download_to_drive(
+            pathlib.Path(f"uploads/{cam.serial}_{cam_photos_count}.jpg")
+        )
 
         archive_msg = await context.bot.send_photo(
             chat_id=int(os.getenv("PHOTOS_ARCHIVE")),
@@ -560,9 +636,25 @@ list_cameras_handler = ConversationHandler(
         CallbackQueryHandler(
             list_cameras,
             "^list_cameras$",
-        )
+        ),
+        CallbackQueryHandler(
+            search_cameras,
+            "^search_cameras$",
+        ),
     ],
     states={
+        SEARCH_BY: [
+            CallbackQueryHandler(
+                search_by,
+                "^search_by",
+            ),
+        ],
+        SEARCH_QUERY: [
+            MessageHandler(
+                filters=filters.Regex("((^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$)|(^SN-.+$))"),
+                callback=list_cameras,
+            )
+        ],
         CAMERA: [
             CallbackQueryHandler(
                 choose_camera,
@@ -617,6 +709,7 @@ list_cameras_handler = ConversationHandler(
         ],
     },
     fallbacks=[
+        CallbackQueryHandler(back_to_search_by, "^back_to_search_by$"),
         CallbackQueryHandler(back_to_choose_camera, "^back_to_choose_camera$"),
         CallbackQueryHandler(back_to_choose_setting, "^back_to_choose_setting$"),
         CallbackQueryHandler(
