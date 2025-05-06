@@ -890,13 +890,16 @@ async def get_cam_info_with_photos(update: Update, context: ContextTypes.DEFAULT
             )
             if not res:
                 return
-            context.job_queue.run_once(
-                callback=get_cam_info_with_photos_finish,
-                when=10,
-                chat_id=update.effective_chat.id,
-                user_id=update.effective_user.id,
-                data={"is_admin": is_admin},
-            )
+            get_cam_info_with_photos_finish_job = context.job_queue.get_jobs_by_name(name="get_cam_info_with_photos_finish")
+            if not get_cam_info_with_photos_finish_job:
+                context.job_queue.run_once(
+                    callback=get_cam_info_with_photos_finish,
+                    when=10,
+                    chat_id=update.effective_chat.id,
+                    user_id=update.effective_user.id,
+                    data={"is_admin": is_admin},
+                    name="get_cam_info_with_photos_finish"
+                )
         return CONFIRM_ADD_CAM
 
 
@@ -977,7 +980,7 @@ add_camera_handler = ConversationHandler(
                 callback=get_cam_info,
             ),
             MessageHandler(
-                filters=Album(),
+                filters=filters.CAPTION | Album(),
                 callback=get_cam_info_with_photos,
             ),
         ],
