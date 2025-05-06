@@ -71,6 +71,12 @@ async def search_cameras(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     callback_data="search_by_ip",
                 ),
             ],
+            [
+                InlineKeyboardButton(
+                    text="رقم الكاميرا",
+                    callback_data="search_by_id",
+                ),
+            ],
             build_back_button("back_to_cameras_settings"),
             (
                 back_to_admin_home_page_button[0]
@@ -85,7 +91,7 @@ async def search_cameras(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return SEARCH_BY
 
 
-async def search_by(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def choose_search_by(update: Update, context: ContextTypes.DEFAULT_TYPE):
     is_admin = Admin().filter(update)
     is_user = User().filter(update)
     if update.effective_chat.type == Chat.PRIVATE and (is_admin or is_user):
@@ -99,28 +105,37 @@ async def search_by(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         if not update.callback_query.data.startswith("back"):
             context.user_data["search_by"] = update.callback_query.data
-        search_by_dict = {"search_by_serial": "الرقم التسلسلي", "search_by_ip": "الIP"}
+        cams = models.Camera.get_by()
+        search_by_dict = {
+            "search_by_serial": "الرقم التسلسلي",
+            "search_by_ip": "الIP",
+            "search_by_id": (
+                f"رقم الكاميرا بين <b>{cams[0].id}</b> و<b>{cams[-1].id}</b>"
+                if cams
+                else "ليس لديك كاميرات بعد ❗️"
+            ),
+        }
         await update.callback_query.edit_message_text(
             text=f"أرسل {search_by_dict[context.user_data['search_by']]}",
             reply_markup=InlineKeyboardMarkup(back_buttons),
         )
         return SEARCH_QUERY
 
+
 back_to_search_by = search_cameras
+
 
 async def list_cameras(update: Update, context: ContextTypes.DEFAULT_TYPE):
     is_admin = Admin().filter(update)
     is_user = User().filter(update)
     if update.effective_chat.type == Chat.PRIVATE and (is_admin or is_user):
         if update.message:
-            if context.user_data["search_by"] == "search_by_serial":
-                cameras = models.Camera.get_by(
-                    attr="serial", val=update.message.text, all=True
-                )
-            elif context.user_data["search_by"] == "search_by_ip":
-                cameras = models.Camera.get_by(
-                    attr="ip", val=update.message.text, all=True
-                )
+            search_by: str = context.user_data["search_by"]
+            cameras = models.Camera.get_by(
+                attr=search_by.split("_")[-1],
+                val=update.message.text,
+                all=True,
+            )
         else:
             cameras = models.Camera.get_by(all=True)
         if not cameras:
@@ -448,10 +463,15 @@ async def get_new_val(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 return
             else:
-                os.rename(
-                    src=pathlib.Path(f"uploads/{cam.serial}.jpg"),
-                    dst=pathlib.Path(f"uploads/{new_val}.jpg"),
-                )
+                cam_photos = models.CamPhoto.get_by(attr="cam_id", val=cam_id, all=True)
+                for i, p in enumerate(cam_photos):
+                    try:
+                        os.rename(
+                            src=pathlib.Path(p.path),
+                            dst=pathlib.Path(f"uploads/{new_val}_{i}.jpg"),
+                        )
+                    except Exception as e:
+                        print(e)
 
         await models.Camera.update(
             cam_id=cam_id,
@@ -473,7 +493,7 @@ async def get_new_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cam_photos_count = calc_cam_photos_count(serial=cam.serial)
 
         photo = await context.bot.get_file(update.message.photo[-1].file_id)
-        await photo.download_to_drive(
+        path = await photo.download_to_drive(
             pathlib.Path(f"uploads/{cam.serial}_{cam_photos_count}.jpg")
         )
 
@@ -483,6 +503,7 @@ async def get_new_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         await models.CamPhoto.add(
             cam_id=cam_id,
+            path=str(path),
             file_id=archive_msg.photo[-1].file_id,
             file_unique_id=archive_msg.photo[-1].file_unique_id,
             width=archive_msg.photo[-1].width,
@@ -550,6 +571,13 @@ async def confirm_delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type == Chat.PRIVATE and Admin().filter(update):
         cam_id = context.user_data["cam_id"]
         if update.callback_query.data.startswith("yes"):
+            cam = models.Camera.get_by(attr="id", val=cam_id)
+            cam_photos = models.CamPhoto.get_by(attr="cam_id", val=cam_id, all=True)
+            for p in cam_photos:
+                try:
+                    os.remove(path=pathlib.Path(p.path))
+                except Exception as e:
+                    print(e)
             await models.Camera.delete(cam_id)
             await update.callback_query.edit_message_text(
                 text="تم حذف الكاميرا بنجاح ✅"
@@ -570,6 +598,8 @@ async def confirm_delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 texts=[cam.name for cam in cameras],
                 buttons_data=[cam.id for cam in cameras],
             )
+            keyboard.append(build_back_button("back_to_cameras_settings"))
+            keyboard.append(back_to_admin_home_page_button[0])
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
                 text="اختر الكاميرا",
@@ -645,13 +675,15 @@ list_cameras_handler = ConversationHandler(
     states={
         SEARCH_BY: [
             CallbackQueryHandler(
-                search_by,
+                choose_search_by,
                 "^search_by",
             ),
         ],
         SEARCH_QUERY: [
             MessageHandler(
-                filters=filters.Regex("((^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$)|(^SN-.+$))"),
+                filters=filters.Regex(
+                    "((^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$)|(^SN-.+$)|([0-9]+))"
+                ),
                 callback=list_cameras,
             )
         ],

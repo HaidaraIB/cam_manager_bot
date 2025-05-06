@@ -10,7 +10,8 @@ from models.DB import (
 class CamPhoto(Base):
     __tablename__ = "cam_photos"
     id = sa.Column(sa.Integer, autoincrement=True, primary_key=True)
-    cam_id = sa.Column(sa.Integer, sa.ForeignKey("cameras.id"))
+    cam_id = sa.Column(sa.Integer, sa.ForeignKey("cameras.id", ondelete="CASCADE"))
+    path = sa.Column(sa.String)
     file_id = sa.Column(sa.String)
     file_unique_id = sa.Column(sa.String)
     width = sa.Column(sa.Integer)
@@ -23,6 +24,7 @@ class CamPhoto(Base):
     async def add(
         cls,
         cam_id: int,
+        path:str,
         file_id: str,
         file_unique_id: str,
         width: int,
@@ -32,6 +34,7 @@ class CamPhoto(Base):
         s.execute(
             sa.insert(cls).values(
                 cam_id=cam_id,
+                path=path,
                 file_id=file_id,
                 file_unique_id=file_unique_id,
                 width=width,

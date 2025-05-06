@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import declarative_base, Session
 import traceback
 from asyncio import Lock
@@ -6,10 +6,16 @@ from models import *
 
 lock = Lock()
 Base = declarative_base()
-engine = create_engine("sqlite:///data/database.sqlite3")
+engine = create_engine(
+    "sqlite:///data/database.sqlite3", connect_args={"check_same_thread": False}
+)
 
 
 def create_tables():
+    s = Session(bind=engine, autoflush=True)
+    s.execute(text("PRAGMA foreign_keys=ON"))
+    s.commit()
+    s.close()
     Base.metadata.create_all(engine)
 
 

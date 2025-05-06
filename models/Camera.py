@@ -12,6 +12,7 @@ class Camera(Base):
     id = sa.Column(sa.Integer, autoincrement=True, primary_key=True)
     name = sa.Column(sa.String)
     ip = sa.Column(sa.String)
+    ddns = sa.Column(sa.String, default="N/A")
     port = sa.Column(sa.Integer)
     admin_user = sa.Column(sa.String)
     admin_password = sa.Column(sa.String)
@@ -22,7 +23,12 @@ class Camera(Base):
     location = sa.Column(sa.String)
     serial = sa.Column(sa.String)
 
-    photos = relationship("CamPhoto", back_populates="cam")
+    photos = relationship(
+        "CamPhoto",
+        back_populates="cam",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
     @classmethod
     @lock_and_release
