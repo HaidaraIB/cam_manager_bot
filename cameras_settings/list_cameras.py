@@ -32,6 +32,7 @@ from cameras_settings.common import (
     calc_cam_photos_count,
     USER_UPDATE_CAM_CONSTRUCITONS,
     ADMIN_UPDATE_CAM_CONSTRUCTIONS,
+    CAM_INFO_PATTERN,
 )
 from common.back_to_home_page import (
     back_to_admin_home_page_button,
@@ -455,8 +456,8 @@ async def get_new_val(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         cam_id = context.user_data["cam_id"]
-        cam = models.Camera.get_by(attr="id", val=cam_id)
         if attr == "serial":
+            new_val = new_val[3:]
             if models.Camera.get_by(attr="serial", val=new_val):
                 await update.message.reply_text(
                     text="رقم تسلسلي مكرر ❗️",
@@ -712,7 +713,7 @@ list_cameras_handler = ConversationHandler(
             ),
             MessageHandler(
                 filters=filters.Regex(
-                    r"^(\d+\.\d+\.\d+\.\d+)_(\d+)_([\w\d]+)_([\w\d@]+)_(SN-[\w\d]+)_\d+$"
+                    r"^{}$".format(CAM_INFO_PATTERN)
                 ),
                 callback=auto_update_camera,
             ),

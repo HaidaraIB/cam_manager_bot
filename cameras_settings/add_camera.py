@@ -21,6 +21,7 @@ from cameras_settings.common import (
     build_add_camera_methods_keyboard,
     stringify_cam,
     extract_cam_info,
+    CAM_INFO_PATTERN
 )
 from cameras_settings.cameras_settings import cameras_settings_handler
 from start import admin_command
@@ -32,7 +33,7 @@ from common.back_to_home_page import (
     back_to_user_home_page_handler,
 )
 from common.constants import *
-from common.keyboards import build_back_button, build_confirmation_keyboard
+from common.keyboards import build_back_button
 import models
 import pathlib
 import os
@@ -172,7 +173,7 @@ async def get_serial(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ),
         ]
         if update.message:
-            serial = update.message.text
+            serial = update.message.text[3:]
             if models.Camera.get_by(attr="serial", val=serial):
                 await update.message.reply_text(
                     text="رقم تسلسلي مكرر ❗️",
@@ -968,7 +969,10 @@ add_camera_handler = ConversationHandler(
         CAM_INFO: [
             MessageHandler(
                 filters=filters.Regex(
-                    r"^(\d+\.\d+\.\d+\.\d+)_(\d+)_([\w\d]+)_([\w\d@]+)_(SN-[\w\d]+)_\d+$"
+                    r"^{}$".format(CAM_INFO_PATTERN)
+                    # {ip}_{port}_{username}_{password}_SN-{serial}_ID-{index}
+                    # {ip}_{port}_{username}_{password}_SN-{serial}_ID-{index}_HD
+                    # {ip}_{port}_{username}_{password}_SN-_ID-{index}
                 ),
                 callback=get_cam_info,
             ),

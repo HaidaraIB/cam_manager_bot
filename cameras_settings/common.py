@@ -8,6 +8,10 @@ ADMIN_UPDATE_CAM_CONSTRUCTIONS = (
 )
 USER_UPDATE_CAM_CONSTRUCITONS = "اختر حقلاً لتعديله"
 
+CAM_INFO_PATTERN = (
+    r"(\d+\.\d+\.\d+\.\d+)_(\d+)_([\w\d]+)_([\w\d@]+)_(SN-[\w\d-]*)_\d+(_HD)?"
+)
+
 
 def build_cameras_settings_keyboard():
     keyboard = [
@@ -228,16 +232,14 @@ async def extract_cam_info(
     raw_cam_info: str, update: Update, context: ContextTypes.DEFAULT_TYPE
 ):
     context.user_data["raw_cam_info"] = raw_cam_info
-    pattern = re.compile(
-        r"(\d+\.\d+\.\d+\.\d+)_(\d+)_([\w\d]+)_([\w\d@]+)_(SN-[\w\d]+)_\d+"
-    )
+    pattern = re.compile(CAM_INFO_PATTERN)
     match = pattern.match(raw_cam_info)
     if not match:
         await update.message.reply_text(
             text="خطأ في التنسيق ⚠️",
         )
         return False
-    ip, port, admin_user, admin_pass, serial_number = match.groups()
+    ip, port, admin_user, admin_pass, serial_number, _ = match.groups()
     if models.Camera.get_by(attr="serial", val=serial_number):
         await update.message.reply_text(
             text="الكاميرا مضافة مسبقاً ⚠️",
@@ -263,5 +265,5 @@ async def extract_cam_info(
     context.user_data["status"] = "connected"
     context.user_data["location"] = "N/A"
     context.user_data["ddns"] = "N/A"
-    context.user_data["serial"] = serial_number
+    context.user_data["serial"] = serial_number[3:] if serial_number[3:] else name
     return True
