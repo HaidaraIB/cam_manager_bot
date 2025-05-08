@@ -108,16 +108,16 @@ async def choose_search_by(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data["search_by"] = update.callback_query.data
         cams = models.Camera.get_by()
         search_by_dict = {
-            "search_by_serial": "الرقم التسلسلي",
-            "search_by_ip": "الIP",
+            "search_by_serial": "أرسل الرقم التسلسلي",
+            "search_by_ip": "أرسل الIP",
             "search_by_id": (
-                f"رقم الكاميرا بين <b>{cams[0].id}</b> و<b>{cams[-1].id}</b>"
+                f"أرسل رقم الكاميرا بين <b>{cams[0].id}</b> و<b>{cams[-1].id}</b>"
                 if cams
                 else "ليس لديك كاميرات بعد ❗️"
             ),
         }
         await update.callback_query.edit_message_text(
-            text=f"أرسل {search_by_dict[context.user_data['search_by']]}",
+            text=search_by_dict[context.user_data["search_by"]],
             reply_markup=InlineKeyboardMarkup(back_buttons),
         )
         return SEARCH_QUERY
@@ -464,7 +464,9 @@ async def get_new_val(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             src=pathlib.Path(p.path),
                             dst=pathlib.Path(new_path),
                         )
-                        await models.CamPhoto.update(cam_photo_id=p.id, attrs=["path"], new_vals=[new_path])
+                        await models.CamPhoto.update(
+                            cam_photo_id=p.id, attrs=["path"], new_vals=[new_path]
+                        )
                     except Exception as e:
                         print(e)
 
