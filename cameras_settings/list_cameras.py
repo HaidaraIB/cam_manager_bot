@@ -197,15 +197,7 @@ async def choose_camera(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_media_group(
             chat_id=update.effective_chat.id,
             media=[
-                InputMediaPhoto(
-                    media=PhotoSize(
-                        file_id=cam_photo.file_id,
-                        file_unique_id=cam_photo.file_unique_id,
-                        width=cam_photo.width,
-                        height=cam_photo.height,
-                    )
-                )
-                for cam_photo in cam_photos
+                InputMediaPhoto(media=cam_photo.file_id) for cam_photo in cam_photos
             ],
             caption=stringify_cam(cam=cam, for_admin=is_admin),
         )
@@ -467,10 +459,12 @@ async def get_new_val(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 cam_photos = models.CamPhoto.get_by(attr="cam_id", val=cam_id, all=True)
                 for i, p in enumerate(cam_photos):
                     try:
+                        new_path = f"uploads/{new_val}_{i}.jpg"
                         os.rename(
                             src=pathlib.Path(p.path),
-                            dst=pathlib.Path(f"uploads/{new_val}_{i}.jpg"),
+                            dst=pathlib.Path(new_path),
                         )
+                        await models.CamPhoto.update(cam_photo_id=p.id, attrs=["path"], new_vals=[new_path])
                     except Exception as e:
                         print(e)
 
@@ -506,9 +500,6 @@ async def get_new_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cam_id=cam_id,
             path=str(path),
             file_id=archive_msg.photo[-1].file_id,
-            file_unique_id=archive_msg.photo[-1].file_unique_id,
-            width=archive_msg.photo[-1].width,
-            height=archive_msg.photo[-1].height,
         )
         await update_cam_success(
             update=update,
@@ -642,17 +633,7 @@ async def update_cam_success(
     cam_photos = models.CamPhoto.get_by(attr="cam_id", val=cam_id, all=True)
     await context.bot.send_media_group(
         chat_id=update.effective_chat.id,
-        media=[
-            InputMediaPhoto(
-                media=PhotoSize(
-                    file_id=cam_photo.file_id,
-                    file_unique_id=cam_photo.file_unique_id,
-                    width=cam_photo.width,
-                    height=cam_photo.height,
-                )
-            )
-            for cam_photo in cam_photos
-        ],
+        media=[InputMediaPhoto(media=cam_photo.file_id) for cam_photo in cam_photos],
         caption=stringify_cam(cam=cam, for_admin=is_admin),
     )
     await context.bot.send_message(
@@ -712,9 +693,7 @@ list_cameras_handler = ConversationHandler(
                 "^update_cam",
             ),
             MessageHandler(
-                filters=filters.Regex(
-                    r"^{}$".format(CAM_INFO_PATTERN)
-                ),
+                filters=filters.Regex(r"^{}$".format(CAM_INFO_PATTERN)),
                 callback=auto_update_camera,
             ),
         ],

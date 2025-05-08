@@ -5,6 +5,7 @@ from telegram import (
     InlineKeyboardButton,
     InputMediaPhoto,
     PhotoSize,
+    InputMediaPhoto,
 )
 from telegram.ext import (
     ContextTypes,
@@ -14,14 +15,14 @@ from telegram.ext import (
     CommandHandler,
     filters,
 )
-
-from custom_filters import Admin, User, Album
+from custom_filters import Admin, User
 from common.common import send_alert
 from cameras_settings.common import (
     build_add_camera_methods_keyboard,
     stringify_cam,
     extract_cam_info,
-    CAM_INFO_PATTERN
+    media_group_sender,
+    CAM_INFO_PATTERN,
 )
 from cameras_settings.cameras_settings import cameras_settings_handler
 from start import admin_command
@@ -71,7 +72,6 @@ async def add_camera(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if is_admin
             else back_to_user_home_page_button[0]
         )
-        context.user_data["temp_photos"] = []
         await update.callback_query.edit_message_text(
             text="كيف تريد إضافة الكاميرا؟",
             reply_markup=InlineKeyboardMarkup(keyboard),
@@ -96,6 +96,7 @@ async def choose_entry_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data["entry_type"] = add_cam_type
         else:
             add_cam_type = context.user_data["entry_type"]
+        context.user_data["photos"] = []
 
         if add_cam_type == "manual_entry":
             await update.callback_query.edit_message_text(
@@ -208,15 +209,8 @@ async def get_photos(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ),
         ]
         photo = update.message.photo[-1]
-        context.user_data["temp_photos"].append(
-            {
-                "file_id": photo.file_id,
-                "file_unique_id": photo.file_unique_id,
-                "width": photo.width,
-                "height": photo.height,
-            }
-        )
-        cam_photos_count = len(context.user_data["temp_photos"])
+        context.user_data["photos"].append(photo.file_id)
+        cam_photos_count = len(context.user_data["photos"])
 
         await update.message.reply_text(
             text=(
@@ -240,7 +234,7 @@ async def get_photos_finish(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ),
         ]
         if update.message:
-            if not context.user_data["temp_photos"]:
+            if not context.user_data["photos"]:
                 await update.message.reply_text(
                     text="يجب إضافة صورة واحدة على الأقل ❗️"
                 )
@@ -618,15 +612,8 @@ async def get_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data["location"] = update.message.text
             await update.message.reply_media_group(
                 media=[
-                    InputMediaPhoto(
-                        media=PhotoSize(
-                            file_id=photo["file_id"],
-                            file_unique_id=photo["file_unique_id"],
-                            width=photo["width"],
-                            height=photo["height"],
-                        )
-                    )
-                    for photo in context.user_data["temp_photos"]
+                    InputMediaPhoto(media=file_id)
+                    for file_id in context.user_data["photos"]
                 ],
                 caption=stringify_cam(cam_data=context.user_data, for_admin=is_admin),
             )
@@ -648,22 +635,19 @@ async def confirm_add_cam(update: Update, context: ContextTypes.DEFAULT_TYPE):
     is_user = User().filter(update)
     if update.effective_chat.type == Chat.PRIVATE and (is_admin or is_user):
         cam_id = await models.Camera.add(context.user_data)
-        for i, p in enumerate(context.user_data["temp_photos"]):
-            photo = await context.bot.get_file(file_id=p["file_id"])
+        for i, file_id in enumerate(context.user_data["photos"]):
+            photo = await context.bot.get_file(file_id=file_id)
             path = await photo.download_to_drive(
                 pathlib.Path(f"uploads/{context.user_data['serial']}_{i + 1}.jpg")
             )
             archive_msg = await context.bot.send_photo(
                 chat_id=int(os.getenv("PHOTOS_ARCHIVE")),
-                photo=p["file_id"],
+                photo=file_id,
             )
             await models.CamPhoto.add(
                 cam_id=cam_id,
                 path=str(path),
                 file_id=archive_msg.photo[-1].file_id,
-                file_unique_id=archive_msg.photo[-1].file_unique_id,
-                width=archive_msg.photo[-1].width,
-                height=archive_msg.photo[-1].height,
             )
 
         add_cam_alert = models.Alert.get_by(
@@ -683,7 +667,7 @@ async def confirm_add_cam(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     context=context,
                 )
             )
-
+        context.user_data["photos"] = []
         await update.callback_query.answer(
             text="تمت إضافة الكاميرا بنجاح ✅",
             show_alert=True,
@@ -727,9 +711,15 @@ async def get_cam_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ),
         ]
         res = await extract_cam_info(
-            raw_cam_info=update.message.text, update=update, context=context
+            raw_cam_info=update.message.text,
+            context=context,
+            chat_id=update.effective_chat.id,
         )
-        if not res:
+        if res == "duplicate":
+            await update.message.reply_text(text="الكاميرا مضافة مسبقاً ⚠️")
+            return
+        elif res == "no match":
+            await update.message.reply_text(text="خطأ في التنسيق ⚠️")
             return
 
         await update.message.reply_text(
@@ -755,15 +745,8 @@ async def get_photos_in_auto_entry_mode(
     is_user = User().filter(update)
     if update.effective_chat.type == Chat.PRIVATE and (is_admin or is_user):
         photo = update.message.photo[-1]
-        context.user_data["temp_photos"].append(
-            {
-                "file_id": photo.file_id,
-                "file_unique_id": photo.file_unique_id,
-                "width": photo.width,
-                "height": photo.height,
-            }
-        )
-        cam_photos_count = len(context.user_data["temp_photos"])
+        context.user_data["photos"].append(photo.file_id)
+        cam_photos_count = len(context.user_data["photos"])
 
         back_buttons = [
             build_back_button("back_to_get_cam_info"),
@@ -789,27 +772,24 @@ async def get_photos_finish_in_auto_entry_mode(
     is_admin = Admin().filter(update)
     is_user = User().filter(update)
     if update.effective_chat.type == Chat.PRIVATE and (is_admin or is_user):
-        if not context.user_data["temp_photos"]:
+        if not context.user_data["photos"]:
             await update.message.reply_text(text="يجب إضافة صورة واحدة على الأقل ❗️")
             return
         cam_id = await models.Camera.add(cam_data=context.user_data)
-        for i, p in enumerate(context.user_data["temp_photos"]):
+        for i, file_id in enumerate(context.user_data["photos"]):
 
-            photo = await context.bot.get_file(file_id=p["file_id"])
+            photo = await context.bot.get_file(file_id=file_id)
             path = await photo.download_to_drive(
                 pathlib.Path(f"uploads/{context.user_data['serial']}_{i + 1}.jpg")
             )
             archive_msg = await context.bot.send_photo(
                 chat_id=int(os.getenv("PHOTOS_ARCHIVE")),
-                photo=p["file_id"],
+                photo=file_id,
             )
             await models.CamPhoto.add(
                 cam_id=cam_id,
                 path=str(path),
                 file_id=archive_msg.photo[-1].file_id,
-                file_unique_id=archive_msg.photo[-1].file_unique_id,
-                width=archive_msg.photo[-1].width,
-                height=archive_msg.photo[-1].height,
             )
         cam_photos = models.CamPhoto.get_by(attr="cam_id", val=cam_id, all=True)
 
@@ -830,18 +810,10 @@ async def get_photos_finish_in_auto_entry_mode(
                     context=context,
                 )
             )
-
+        context.user_data["photos"] = []
         await update.message.reply_media_group(
             media=[
-                InputMediaPhoto(
-                    media=PhotoSize(
-                        file_id=cam_photo.file_id,
-                        file_unique_id=cam_photo.file_unique_id,
-                        width=cam_photo.width,
-                        height=cam_photo.height,
-                    )
-                )
-                for cam_photo in cam_photos
+                InputMediaPhoto(media=cam_photo.file_id) for cam_photo in cam_photos
             ],
             caption=(
                 stringify_cam(cam_data=context.user_data, for_admin=is_admin)
@@ -872,81 +844,25 @@ async def get_cam_info_with_photos(update: Update, context: ContextTypes.DEFAULT
     is_admin = Admin().filter(update)
     is_user = User().filter(update)
     if update.effective_chat.type == Chat.PRIVATE and (is_admin or is_user):
-        photo = update.message.photo[-1]
-        context.user_data["temp_photos"].append(
-            {
-                "file_id": photo.file_id,
-                "file_unique_id": photo.file_unique_id,
-                "width": photo.width,
-                "height": photo.height,
-            }
-        )
-        if update.message.caption:
+        message = update.effective_message
+        photo = message.photo[-1]
+        photo_data = {"file_id": photo.file_id, "caption": message.caption}
+        jobs = context.job_queue.get_jobs_by_name(str(message.media_group_id))
+        if jobs:
+            context.user_data['photos_data'].append(photo_data)
+        else:
+            context.user_data['photos_data'] = [photo_data]
+            context.job_queue.run_once(
+                callback=media_group_sender,
+                when=10,
+                data=is_admin,
+                name=str(message.media_group_id),
+                chat_id=update.effective_chat.id,
+                user_id=update.effective_user.id,
+            )
             await update.message.reply_text(
                 text=f"تحليل البيانات جارٍ، الرجاء الانتظار ⏳"
             )
-            res = await extract_cam_info(
-                raw_cam_info=update.message.caption, update=update, context=context
-            )
-            if not res:
-                return
-            get_cam_info_with_photos_finish_job = context.job_queue.get_jobs_by_name(name="get_cam_info_with_photos_finish")
-            if not get_cam_info_with_photos_finish_job:
-                context.job_queue.run_once(
-                    callback=get_cam_info_with_photos_finish,
-                    when=10,
-                    chat_id=update.effective_chat.id,
-                    user_id=update.effective_user.id,
-                    data={"is_admin": is_admin},
-                    name="get_cam_info_with_photos_finish"
-                )
-        return CONFIRM_ADD_CAM
-
-
-async def get_cam_info_with_photos_finish(context: ContextTypes.DEFAULT_TYPE):
-    is_admin = context.job.data["is_admin"]
-    await context.bot.send_media_group(
-        chat_id=context.job.chat_id,
-        media=[
-            InputMediaPhoto(
-                media=PhotoSize(
-                    file_id=cam_photo["file_id"],
-                    file_unique_id=cam_photo["file_unique_id"],
-                    width=cam_photo["width"],
-                    height=cam_photo["height"],
-                )
-            )
-            for cam_photo in context.application.user_data[context.job.user_id][
-                "temp_photos"
-            ]
-        ],
-        caption=(
-            f"تم تحليل البيانات ✅\n\n"
-            + stringify_cam(
-                cam_data=context.application.user_data[context.job.user_id],
-                for_admin=is_admin,
-            )
-        ),
-    )
-    keyboard = [
-        [
-            InlineKeyboardButton(
-                text="إضافة ➕",
-                callback_data="confirm_add_cam",
-            )
-        ],
-        build_back_button("back_to_get_cam_info"),
-        (
-            back_to_admin_home_page_button[0]
-            if is_admin
-            else back_to_user_home_page_button[0]
-        ),
-    ]
-    await context.bot.send_message(
-        chat_id=context.job.chat_id,
-        text="هل أنت متأكد من أنك تريد إضافة هذه الكاميرا؟",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-    )
 
 
 add_camera_handler = ConversationHandler(
@@ -980,8 +896,12 @@ add_camera_handler = ConversationHandler(
                 callback=get_cam_info,
             ),
             MessageHandler(
-                filters=filters.CAPTION | Album(),
+                filters=filters.PHOTO,
                 callback=get_cam_info_with_photos,
+            ),
+            CallbackQueryHandler(
+                confirm_add_cam,
+                "^confirm_add_cam$",
             ),
         ],
         PHOTOS_IN_AUTO_ENTRY_MODE: [

@@ -13,9 +13,6 @@ class CamPhoto(Base):
     cam_id = sa.Column(sa.Integer, sa.ForeignKey("cameras.id", ondelete="CASCADE"))
     path = sa.Column(sa.String)
     file_id = sa.Column(sa.String)
-    file_unique_id = sa.Column(sa.String)
-    width = sa.Column(sa.Integer)
-    height = sa.Column(sa.Integer)
 
     cam = relationship("Camera", back_populates="photos")
 
@@ -26,9 +23,6 @@ class CamPhoto(Base):
         cam_id: int,
         path:str,
         file_id: str,
-        file_unique_id: str,
-        width: int,
-        height: int,
         s: Session = None,
     ):
         s.execute(
@@ -36,9 +30,6 @@ class CamPhoto(Base):
                 cam_id=cam_id,
                 path=path,
                 file_id=file_id,
-                file_unique_id=file_unique_id,
-                width=width,
-                height=height,
             )
         )
 
@@ -69,3 +60,10 @@ class CamPhoto(Base):
                 return cams
             except:
                 return
+
+    @classmethod
+    @lock_and_release
+    async def update(cls, cam_photo_id: int, attrs: list, new_vals: list, s: Session = None):
+        s.query(cls).filter_by(id=cam_photo_id).update(
+            dict(zip([getattr(cls, attr) for attr in attrs], new_vals))
+        )

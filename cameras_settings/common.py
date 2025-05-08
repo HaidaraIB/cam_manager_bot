@@ -1,7 +1,23 @@
-from telegram import InlineKeyboardButton, Update
+from telegram import (
+    InlineKeyboardButton,
+    Update,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+    InputMediaPhoto,
+)
 from telegram.ext import ContextTypes
+from typing import TypedDict, List, cast
+from telegram.ext import ContextTypes
+from common.keyboards import build_back_button
+from common.back_to_home_page import (
+    back_to_admin_home_page_button,
+    back_to_user_home_page_button,
+)
 import models
 import re
+import logging
+
+log = logging.getLogger(__name__)
 
 ADMIN_UPDATE_CAM_CONSTRUCTIONS = (
     "اختر حقلاً لتعديله، يمكنك إرسال معلومات الكاميرا كاملة ليقوم البوت بتحديثها تلقائياً"
@@ -228,23 +244,18 @@ def calc_cam_photos_count(serial: str):
     return cam_photos_count
 
 
-async def extract_cam_info(
-    raw_cam_info: str, update: Update, context: ContextTypes.DEFAULT_TYPE
-):
+async def extract_cam_info(raw_cam_info: str, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["raw_cam_info"] = raw_cam_info
     pattern = re.compile(CAM_INFO_PATTERN)
     match = pattern.match(raw_cam_info)
+
     if not match:
-        await update.message.reply_text(
-            text="خطأ في التنسيق ⚠️",
-        )
-        return False
+        return "no match"
+
     ip, port, admin_user, admin_pass, serial_number, _ = match.groups()
     if models.Camera.get_by(attr="serial", val=serial_number):
-        await update.message.reply_text(
-            text="الكاميرا مضافة مسبقاً ⚠️",
-        )
-        return False
+        return "duplicate"
+
     last_cam = models.Camera.get_by(last=True)
     last_cam_id = last_cam.id if last_cam else 0
     name = f"Cam_{str(last_cam_id + 1).rjust(3, '0')}_cctv"
@@ -266,4 +277,69 @@ async def extract_cam_info(
     context.user_data["location"] = "N/A"
     context.user_data["ddns"] = "N/A"
     context.user_data["serial"] = serial_number[3:] if serial_number[3:] else name
-    return True
+    return "done"
+
+
+async def media_group_sender(context: ContextTypes.DEFAULT_TYPE):
+    is_admin = context.job.data
+    photos_data = context.application.user_data[context.job.user_id]["photos_data"]
+    res = "no match"
+    for p_data in photos_data:
+        if p_data["caption"]:
+            res = await extract_cam_info(
+                raw_cam_info=p_data["caption"], context=context
+            )
+            if res in ["no match", "duplicate"]:
+                continue
+            break
+    if res == "no match":
+        await context.bot.send_message(
+            chat_id=context.job.chat_id,
+            text="خطأ في التنسيق ⚠️",
+        )
+        return
+    elif res == "duplicate":
+        await context.bot.send_message(
+            chat_id=context.job.chat_id,
+            text="الكاميرا مضافة مسبقاً ⚠️",
+        )
+        return
+    photos = [p_data["file_id"] for p_data in photos_data]
+    context.application.user_data[context.job.user_id]["photos"] = photos
+    try:
+        await context.bot.send_media_group(
+            chat_id=context.job.chat_id,
+            media=[InputMediaPhoto(media=file_id) for file_id in photos],
+            caption=(
+                f"تم تحليل البيانات ✅\n\n"
+                + stringify_cam(
+                    cam_data=context.application.user_data[context.job.user_id],
+                    for_admin=is_admin,
+                )
+            ),
+        )
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    text="إضافة ➕",
+                    callback_data="confirm_add_cam",
+                )
+            ],
+            build_back_button("back_to_get_cam_info"),
+            (
+                back_to_admin_home_page_button[0]
+                if is_admin
+                else back_to_user_home_page_button[0]
+            ),
+        ]
+        await context.bot.send_message(
+            chat_id=context.job.chat_id,
+            text="هل أنت متأكد من أنك تريد إضافة هذه الكاميرا؟",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+        )
+    except Exception as e:
+        await context.bot.send_message(
+            chat_id=context.job.chat_id,
+            text="خطأ أثناء تحليل البيانات يرجى إعادة المحاولة من جديد ❗️",
+        )
+        log.error(f"error while sending media group: {e}")
