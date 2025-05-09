@@ -6,7 +6,7 @@ from common.back_to_home_page import (
     back_to_admin_home_page_button,
     back_to_admin_home_page_handler,
 )
-from admin.user_settings.user_settings import user_settings_handler
+from admin.manage_users.manage_users import manage_users_handler
 from custom_filters import Admin
 from common.constants import *
 from common.common import get_user_display_name
@@ -57,7 +57,7 @@ remove_user_handler = ConversationHandler(
         ]
     },
     fallbacks=[
-        user_settings_handler,
+        manage_users_handler,
         admin_command,
         back_to_admin_home_page_handler,
     ],

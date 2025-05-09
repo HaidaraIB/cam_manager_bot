@@ -10,7 +10,7 @@ import models
 from custom_filters import Admin, User
 from common.keyboards import build_user_keyboard, build_admin_keyboard
 from common.common import check_hidden_keyboard
-
+from common.lang_dicts import *
 # from common.decorators import (
 #     check_if_user_banned_dec,
 #     add_new_user_dec,
@@ -41,10 +41,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     is_admin = Admin().filter(update)
     is_user = User().filter(update)
     if update.effective_chat.type == Chat.PRIVATE and (is_admin or is_user):
+        lang = context.user_data.get('lang', models.Language.ARABIC)
         await set_commands(update, context)
         await update.message.reply_text(
-            text="أهلاً بك...",
-            reply_markup=build_user_keyboard(),
+            text=TEXTS[lang]['welcome'],
+            reply_markup=build_user_keyboard(lang=lang),
         )
         return ConversationHandler.END
 

@@ -4,7 +4,6 @@ from telegram import (
     InlineKeyboardMarkup,
     InlineKeyboardButton,
     InputMediaPhoto,
-    PhotoSize,
 )
 from telegram.ext import (
     ContextTypes,
@@ -14,7 +13,6 @@ from telegram.ext import (
     filters,
 )
 from custom_filters import Admin, User
-import models
 import re
 import pathlib
 import os
@@ -23,6 +21,7 @@ from common.keyboards import (
     build_keyboard,
     build_back_button,
     build_confirmation_keyboard,
+    build_back_to_user_home_page_button,
 )
 from cameras_settings.common import (
     stringify_cam,
@@ -30,19 +29,17 @@ from cameras_settings.common import (
     build_cameras_settings_keyboard,
     build_update_camera_keyboard,
     calc_cam_photos_count,
-    USER_UPDATE_CAM_CONSTRUCITONS,
-    ADMIN_UPDATE_CAM_CONSTRUCTIONS,
     CAM_INFO_PATTERN,
 )
 from common.back_to_home_page import (
     back_to_admin_home_page_button,
     back_to_admin_home_page_handler,
-    back_to_user_home_page_button,
     back_to_user_home_page_handler,
 )
 from common.common import send_alert
 from cameras_settings.cameras_settings import cameras_settings_handler
 from start import admin_command
+from common.lang_dicts import *
 
 (
     SEARCH_BY,
@@ -61,32 +58,33 @@ async def search_cameras(update: Update, context: ContextTypes.DEFAULT_TYPE):
     is_admin = Admin().filter(update)
     is_user = User().filter(update)
     if update.effective_chat.type == Chat.PRIVATE and (is_admin or is_user):
+        lang = context.user_data.get("lang", models.Language.ARABIC)
         keyboard = [
             [
                 InlineKeyboardButton(
-                    text="الرقم التسلسلي",
+                    text=BUTTONS[lang]["search_by_serial"],
                     callback_data="search_by_serial",
                 ),
                 InlineKeyboardButton(
-                    text="IP",
+                    text=BUTTONS[lang]["search_by_ip"],
                     callback_data="search_by_ip",
                 ),
             ],
             [
                 InlineKeyboardButton(
-                    text="رقم الكاميرا",
+                    text=BUTTONS[lang]["search_by_id"],
                     callback_data="search_by_id",
                 ),
             ],
-            build_back_button("back_to_cameras_settings"),
+            build_back_button("back_to_cameras_settings", lang=lang),
             (
                 back_to_admin_home_page_button[0]
                 if is_admin
-                else back_to_user_home_page_button[0]
+                else build_back_to_user_home_page_button(lang=lang)[0]
             ),
         ]
         await update.callback_query.edit_message_text(
-            text="البحث حسب",
+            text=TEXTS[lang]["search_by"],
             reply_markup=InlineKeyboardMarkup(keyboard),
         )
         return SEARCH_BY
@@ -96,28 +94,32 @@ async def choose_search_by(update: Update, context: ContextTypes.DEFAULT_TYPE):
     is_admin = Admin().filter(update)
     is_user = User().filter(update)
     if update.effective_chat.type == Chat.PRIVATE and (is_admin or is_user):
+        lang = context.user_data.get("lang", models.Language.ARABIC)
         back_buttons = [
-            build_back_button("back_to_search_by"),
+            build_back_button("back_to_search_by", lang=lang),
             (
                 back_to_admin_home_page_button[0]
                 if is_admin
-                else back_to_user_home_page_button[0]
+                else build_back_to_user_home_page_button(lang=lang)[0]
             ),
         ]
         if not update.callback_query.data.startswith("back"):
             context.user_data["search_by"] = update.callback_query.data
         cams = models.Camera.get_by()
-        search_by_dict = {
-            "search_by_serial": "أرسل الرقم التسلسلي",
-            "search_by_ip": "أرسل الIP",
-            "search_by_id": (
-                f"أرسل رقم الكاميرا بين <b>{cams[0].id}</b> و<b>{cams[-1].id}</b>"
-                if cams
-                else "ليس لديك كاميرات بعد ❗️"
-            ),
-        }
+        if not cams:
+            await update.callback_query.answer(
+                text=TEXTS[lang]["no_cameras"],
+                show_alert=True,
+            )
+            return
+
         await update.callback_query.edit_message_text(
-            text=search_by_dict[context.user_data["search_by"]],
+            text=TEXTS[lang][context.user_data["search_by"]]
+            + (
+                f"{cams[0].id}-{cams[-1].id}"
+                if context.user_data["search_by"].endswith("id")
+                else ""
+            ),
             reply_markup=InlineKeyboardMarkup(back_buttons),
         )
         return SEARCH_QUERY
@@ -130,6 +132,7 @@ async def list_cameras(update: Update, context: ContextTypes.DEFAULT_TYPE):
     is_admin = Admin().filter(update)
     is_user = User().filter(update)
     if update.effective_chat.type == Chat.PRIVATE and (is_admin or is_user):
+        lang = context.user_data.get("lang", models.Language.ARABIC)
         if update.message:
             search_by: str = context.user_data["search_by"]
             cameras = models.Camera.get_by(
@@ -142,13 +145,13 @@ async def list_cameras(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not cameras:
             if update.callback_query:
                 await update.callback_query.answer(
-                    text="ليس لديك كاميرات بعد ❗️",
+                    text=TEXTS[lang]["no_cameras"],
                     show_alert=True,
                 )
                 return ConversationHandler.END
             else:
                 await update.message.reply_text(
-                    text="لم يتم العثور على نتائج ❗️",
+                    text=TEXTS[lang]["no_results"],
                 )
                 return
         keyboard = build_keyboard(
@@ -156,20 +159,20 @@ async def list_cameras(update: Update, context: ContextTypes.DEFAULT_TYPE):
             texts=[cam.name for cam in cameras],
             buttons_data=[cam.id for cam in cameras],
         )
-        keyboard.append(build_back_button("back_to_cameras_settings"))
+        keyboard.append(build_back_button("back_to_cameras_settings", lang=lang))
         keyboard.append(
             back_to_admin_home_page_button[0]
             if is_admin
-            else back_to_user_home_page_button[0]
+            else build_back_to_user_home_page_button(lang=lang)[0]
         )
         if update.message:
             await update.message.reply_text(
-                text="اختر الكاميرا",
+                text=TEXTS[lang]["choose_camera"],
                 reply_markup=InlineKeyboardMarkup(keyboard),
             )
         else:
             await update.callback_query.edit_message_text(
-                text="اختر الكاميرا",
+                text=TEXTS[lang]["choose_camera"],
                 reply_markup=InlineKeyboardMarkup(keyboard),
             )
         return CAMERA
@@ -179,18 +182,19 @@ async def choose_camera(update: Update, context: ContextTypes.DEFAULT_TYPE):
     is_admin = Admin().filter(update)
     is_user = User().filter(update)
     if update.effective_chat.type == Chat.PRIVATE and (is_admin or is_user):
+        lang = context.user_data.get("lang", models.Language.ARABIC)
         if not update.callback_query.data.startswith("back"):
             cam_id = int(update.callback_query.data)
             context.user_data["cam_id"] = cam_id
         else:
             cam_id = context.user_data["cam_id"]
         cam = models.Camera.get_by(attr="id", val=cam_id)
-        keyboard = build_single_camera_settings_keyboard(for_admin=is_admin)
-        keyboard.append(build_back_button("back_to_choose_camera"))
+        keyboard = build_single_camera_settings_keyboard(for_admin=is_admin, lang=lang)
+        keyboard.append(build_back_button("back_to_choose_camera", lang=lang))
         keyboard.append(
             back_to_admin_home_page_button[0]
             if is_admin
-            else back_to_user_home_page_button[0]
+            else build_back_to_user_home_page_button(lang=lang)[0]
         )
         await update.callback_query.delete_message()
         cam_photos = models.CamPhoto.get_by(attr="cam_id", val=cam_id, all=True)
@@ -203,7 +207,7 @@ async def choose_camera(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text="اختر أحد الخيارات أدناه",
+            text=TEXTS[lang]["choose_option"],
             reply_markup=InlineKeyboardMarkup(keyboard),
         )
         return SETTING
@@ -216,6 +220,7 @@ async def choose_setting(update: Update, context: ContextTypes.DEFAULT_TYPE):
     is_admin = Admin().filter(update)
     is_user = User().filter(update)
     if update.effective_chat.type == Chat.PRIVATE and (is_admin or is_user):
+        lang = context.user_data.get("lang", models.Language.ARABIC)
         if not update.callback_query.data.startswith("back"):
             setting = update.callback_query.data
             context.user_data["chosen_setting"] = setting
@@ -223,18 +228,20 @@ async def choose_setting(update: Update, context: ContextTypes.DEFAULT_TYPE):
             setting = context.user_data["chosen_setting"]
 
         if setting.startswith("update"):
-            keyboard = build_update_camera_keyboard(for_admin=is_admin)
-            keyboard.append(build_back_button("back_to_choose_setting"))
+            keyboard = build_update_camera_keyboard(for_admin=is_admin, lang=lang)
+            keyboard.append(build_back_button("back_to_choose_setting", lang=lang))
             keyboard.append(
                 back_to_admin_home_page_button[0]
                 if is_admin
-                else back_to_user_home_page_button[0]
+                else build_back_to_user_home_page_button(lang=lang)[0]
             )
             await update.callback_query.edit_message_text(
                 text=(
-                    ADMIN_UPDATE_CAM_CONSTRUCTIONS
+                    (
+                        "اختر حقلاً لتعديله، يمكنك إرسال معلومات الكاميرا كاملة ليقوم البوت بتحديثها تلقائياً"
+                    )
                     if is_admin
-                    else USER_UPDATE_CAM_CONSTRUCITONS
+                    else TEXTS[lang]["choose_update_field"]
                 ),
                 reply_markup=InlineKeyboardMarkup(keyboard),
             )
@@ -242,15 +249,15 @@ async def choose_setting(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif setting.startswith("delete"):
             if not is_admin:
                 await update.callback_query.answer(
-                    text="ليس لديك الصلاحيات الكافية للحذف ❗️",
+                    text=TEXTS[lang]["no_priv"],
                     show_alert=True,
                 )
                 return
-            keyboard = build_confirmation_keyboard(f"delete_camera")
-            keyboard.append(build_back_button("back_to_choose_setting"))
+            keyboard = build_confirmation_keyboard(f"delete_camera", lang=lang)
+            keyboard.append(build_back_button("back_to_choose_setting", lang=lang))
             keyboard.append(back_to_admin_home_page_button[0])
             await update.callback_query.edit_message_text(
-                text="<b>هل أنت متأكد من أنك تريد حذف هذه الكاميرا؟</b>",
+                text=TEXTS[lang]["delete_confirm"],
                 reply_markup=InlineKeyboardMarkup(keyboard),
             )
             return CONFIRM_DELETE
@@ -341,7 +348,9 @@ async def confirm_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
             keyboard.append(build_back_button("back_to_choose_setting"))
             keyboard.append(back_to_admin_home_page_button[0])
             await update.callback_query.edit_message_text(
-                text=ADMIN_UPDATE_CAM_CONSTRUCTIONS,
+                text=(
+                    "اختر حقلاً لتعديله، يمكنك إرسال معلومات الكاميرا كاملة ليقوم البوت بتحديثها تلقائياً"
+                ),
                 reply_markup=InlineKeyboardMarkup(keyboard),
             )
             return UPDATE_SETTING
@@ -351,14 +360,15 @@ async def choose_update_setting(update: Update, context: ContextTypes.DEFAULT_TY
     is_admin = Admin().filter(update)
     is_user = User().filter(update)
     if update.effective_chat.type == Chat.PRIVATE and (is_admin or is_user):
+        lang = context.user_data.get("lang", models.Language.ARABIC)
         cam_id = context.user_data["cam_id"]
         cam = models.Camera.get_by(attr="id", val=cam_id)
         back_buttons = [
-            build_back_button("back_to_choose_update_setting"),
+            build_back_button("back_to_choose_update_setting", lang=lang),
             (
                 back_to_admin_home_page_button[0]
                 if is_admin
-                else back_to_user_home_page_button[0]
+                else build_back_to_user_home_page_button(lang=lang)[0]
             ),
         ]
         if not update.callback_query.data.startswith("back"):
@@ -371,7 +381,7 @@ async def choose_update_setting(update: Update, context: ContextTypes.DEFAULT_TY
             attr == "status" and not is_user and not is_admin
         ):
             await update.callback_query.answer(
-                text="ليس لديك الصلاحيات الكافية لهذا التعديل ❗️",
+                text=TEXTS[lang]["no_priv"],
                 show_alert=True,
             )
             return
@@ -395,18 +405,18 @@ async def choose_update_setting(update: Update, context: ContextTypes.DEFAULT_TY
                 keyboard = [
                     [
                         InlineKeyboardButton(
-                            text="متصل",
+                            text=BUTTONS[lang]["connected_status"],
                             callback_data="connected",
                         ),
                         InlineKeyboardButton(
-                            text="غير متصل",
+                            text=BUTTONS[lang]["disconnected_status"],
                             callback_data="disconnected",
                         ),
                     ],
                     *back_buttons,
                 ]
             await update.callback_query.edit_message_text(
-                text="اختر القيمة الجديدة",
+                text=TEXTS[lang]["choose_new_val"],
                 reply_markup=InlineKeyboardMarkup(keyboard),
             )
             return UPDATE_CAM_TYPE_AND_STATUS
@@ -517,6 +527,7 @@ async def update_cam_type_and_status(
     is_admin = Admin().filter(update)
     is_user = User().filter(update)
     if update.effective_chat.type == Chat.PRIVATE and (is_admin or is_user):
+        lang = context.user_data.get("lang", models.Language.ARABIC)
         cam_id = context.user_data["cam_id"]
         cam = models.Camera.get_by(attr="id", val=cam_id)
         new_val = update.callback_query.data
@@ -543,13 +554,15 @@ async def update_cam_type_and_status(
                     users = models.User.get_users()
                 asyncio.create_task(
                     send_alert(
-                        msg=f"تم تحديث حالة الكاميرا <code>{cam.name}</code> إلى <code>{'متصل' if new_val=='connected' else 'غير متصل'}</code> 🚨",
+                        msg=TEXTS[lang]["status_update_alert"].format(
+                            cam.name, "متصل" if new_val == "connected" else "غير متصل"
+                        ),
                         users=users,
                         context=context,
                     )
                 )
         await update.callback_query.answer(
-            text="تم تحديث الكاميرا بنجاح ✅",
+            text=TEXTS[lang]["cam_update_success"],
             show_alert=True,
         )
         await update.callback_query.delete_message()
@@ -616,21 +629,22 @@ async def update_cam_success(
     context: ContextTypes.DEFAULT_TYPE,
     cam_id: int,
 ):
+    lang = context.user_data.get("lang", models.Language.ARABIC)
     is_admin = Admin().filter(update)
     if update.message:
-        await update.message.reply_text(text="تم تحديث الكاميرا بنجاح ✅")
+        await update.message.reply_text(text=TEXTS[lang]["cam_update_success"])
     else:
         await update.callback_query.answer(
-            text="تم تحديث الكاميرا بنجاح ✅",
+            text=TEXTS[lang]["cam_update_success"],
             show_alert=True,
         )
     cam = models.Camera.get_by(attr="id", val=cam_id)
-    keyboard = build_single_camera_settings_keyboard(for_admin=is_admin)
-    keyboard.append(build_back_button("back_to_choose_camera"))
+    keyboard = build_single_camera_settings_keyboard(for_admin=is_admin, lang=lang)
+    keyboard.append(build_back_button("back_to_choose_camera", lang=lang))
     keyboard.append(
         back_to_admin_home_page_button[0]
         if is_admin
-        else back_to_user_home_page_button[0]
+        else build_back_to_user_home_page_button(lang=lang)[0]
     )
     cam_photos = models.CamPhoto.get_by(attr="cam_id", val=cam_id, all=True)
     await context.bot.send_media_group(
@@ -640,7 +654,7 @@ async def update_cam_success(
     )
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text="اختر أحد الخيارات أدناه",
+        text=TEXTS[lang]["choose_option"],
         reply_markup=InlineKeyboardMarkup(keyboard),
     )
 
@@ -723,6 +737,10 @@ list_cameras_handler = ConversationHandler(
         ],
     },
     fallbacks=[
+        admin_command,
+        cameras_settings_handler,
+        back_to_admin_home_page_handler,
+        back_to_user_home_page_handler,
         CallbackQueryHandler(back_to_search_by, "^back_to_search_by$"),
         CallbackQueryHandler(back_to_choose_camera, "^back_to_choose_camera$"),
         CallbackQueryHandler(back_to_choose_setting, "^back_to_choose_setting$"),
@@ -732,10 +750,6 @@ list_cameras_handler = ConversationHandler(
         CallbackQueryHandler(
             back_to_choose_update_setting, "^back_to_choose_update_setting$"
         ),
-        back_to_admin_home_page_handler,
-        back_to_user_home_page_handler,
-        cameras_settings_handler,
-        admin_command,
     ],
     name="list_cameras_conversation",
     persistent=True,

@@ -10,11 +10,12 @@ from common.error_handler import error_handler
 from common.force_join import check_joined_handler
 
 from user.user_calls import *
+from user.user_settings import *
 
 from admin.alerts_settings import *
 from admin.admin_calls import *
 from admin.admin_settings import *
-from admin.user_settings import *
+from admin.manage_users import *
 from admin.broadcast import *
 from admin.ban import *
 from cameras_settings import *
@@ -36,6 +37,9 @@ def main():
         )
     )
 
+    app.add_handler(user_settings_handler)
+    app.add_handler(change_lang_handler)
+
     app.add_handler(add_camera_handler)
     app.add_handler(list_cameras_handler)
     app.add_handler(cameras_settings_handler)
@@ -43,7 +47,7 @@ def main():
     app.add_handler(alerts_settings_handler)
 
     # USER SETTINGS
-    app.add_handler(user_settings_handler)
+    app.add_handler(manage_users_handler)
     app.add_handler(show_users_handler)
     app.add_handler(add_user_handler)
     app.add_handler(remove_user_handler)

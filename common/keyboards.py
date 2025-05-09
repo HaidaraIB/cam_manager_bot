@@ -5,14 +5,21 @@ from telegram import (
     KeyboardButtonRequestChat,
     KeyboardButtonRequestUsers,
 )
+from common.lang_dicts import *
 
 
-def build_user_keyboard():
+def build_user_keyboard(lang: models.Language):
     keyboard = [
         [
             InlineKeyboardButton(
-                text="إدارة الكاميرات 📷",
+                text=BUTTONS[lang]["manage_cameras"],
                 callback_data="manage_cameras",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text=BUTTONS[lang]["settings"],
+                callback_data="user_settings",
             ),
         ],
     ]
@@ -85,15 +92,36 @@ def build_admin_keyboard():
     return InlineKeyboardMarkup(keyboard)
 
 
-def build_back_button(data: str):
-    return [InlineKeyboardButton(text="الرجوع 🔙", callback_data=data)]
+def build_back_button(data: str, lang: models.Language = models.Language.ARABIC):
+    return [
+        InlineKeyboardButton(
+            text=BUTTONS[lang]["back_button"],
+            callback_data=data,
+        ),
+    ]
 
 
-def build_confirmation_keyboard(data: str):
+def build_back_to_user_home_page_button(lang: models.Language = models.Language.ARABIC):
+    button = [
+        [
+            InlineKeyboardButton(
+                text=BUTTONS[lang]["back_to_home_page"],
+                callback_data=f"back_to_user_home_page",
+            )
+        ],
+    ]
+    return button
+
+
+def build_confirmation_keyboard(
+    data: str, lang: models.Language = models.Language.ARABIC
+):
     return [
         [
-            InlineKeyboardButton(text="نعم 👍", callback_data=f"yes_{data}"),
-            InlineKeyboardButton(text="لا 👎", callback_data=f"no_{data}"),
+            InlineKeyboardButton(
+                text=BUTTONS[lang]["yes"], callback_data=f"yes_{data}"
+            ),
+            InlineKeyboardButton(text=BUTTONS[lang]["no"], callback_data=f"no_{data}"),
         ]
     ]
 

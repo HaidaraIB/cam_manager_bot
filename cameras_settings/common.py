@@ -1,51 +1,44 @@
 from telegram import (
     InlineKeyboardButton,
-    Update,
     InlineKeyboardMarkup,
     InlineKeyboardButton,
     InputMediaPhoto,
 )
 from telegram.ext import ContextTypes
-from typing import TypedDict, List, cast
 from telegram.ext import ContextTypes
-from common.keyboards import build_back_button
+from common.keyboards import build_back_button, build_back_to_user_home_page_button
 from common.back_to_home_page import (
-    back_to_admin_home_page_button,
-    back_to_user_home_page_button,
+    back_to_admin_home_page_button
 )
-import models
+from common.lang_dicts import *
 import re
 import logging
 
 log = logging.getLogger(__name__)
 
-ADMIN_UPDATE_CAM_CONSTRUCTIONS = (
-    "اختر حقلاً لتعديله، يمكنك إرسال معلومات الكاميرا كاملة ليقوم البوت بتحديثها تلقائياً"
-)
-USER_UPDATE_CAM_CONSTRUCITONS = "اختر حقلاً لتعديله"
 
 CAM_INFO_PATTERN = (
     r"(\d+\.\d+\.\d+\.\d+)_(\d+)_([\w\d]+)_([\w\d@]+)_(SN-[\w\d-]*)_\d+(_HD)?"
 )
 
 
-def build_cameras_settings_keyboard():
+def build_cameras_settings_keyboard(lang: models.Language = models.Language.ARABIC):
     keyboard = [
         [
             InlineKeyboardButton(
-                text="إضافة كاميرا 📷",
+                text=BUTTONS[lang]["add_cam"],
                 callback_data="add_camera",
             )
         ],
         [
             InlineKeyboardButton(
-                text="قائمة الكاميرات 📋",
+                text=BUTTONS[lang]["list_cams"],
                 callback_data="list_cameras",
             )
         ],
         [
             InlineKeyboardButton(
-                text="بحث 🔎",
+                text=BUTTONS[lang]["search_cams"],
                 callback_data="search_cameras",
             )
         ],
@@ -53,11 +46,13 @@ def build_cameras_settings_keyboard():
     return keyboard
 
 
-def build_single_camera_settings_keyboard(for_admin: bool):
+def build_single_camera_settings_keyboard(
+    for_admin: bool, lang: models.Language = models.Language.ARABIC
+):
     keyboard = [
         [
             InlineKeyboardButton(
-                text="تعديل 🔄",
+                text=BUTTONS[lang]["update_cam"],
                 callback_data="update_camera",
             ),
         ],
@@ -72,7 +67,9 @@ def build_single_camera_settings_keyboard(for_admin: bool):
     return keyboard
 
 
-def build_update_camera_keyboard(for_admin: bool):
+def build_update_camera_keyboard(
+    for_admin: bool, lang: models.Language = models.Language.ARABIC
+):
     if for_admin:
         keyboard = [
             [
@@ -144,7 +141,7 @@ def build_update_camera_keyboard(for_admin: bool):
         keyboard = [
             [
                 InlineKeyboardButton(
-                    text="الحالة",
+                    text=BUTTONS[lang]["update_cam_status"],
                     callback_data="update_cam_status",
                 ),
             ],
@@ -152,17 +149,17 @@ def build_update_camera_keyboard(for_admin: bool):
     return keyboard
 
 
-def build_add_camera_methods_keyboard():
+def build_add_camera_methods_keyboard(lang: models.Language = models.Language.ARABIC):
     keyboard = [
         [
             InlineKeyboardButton(
-                text="يدويًا 📝",
+                text=BUTTONS[lang]["manual_entry"],
                 callback_data="manual_entry",
             )
         ],
         [
             InlineKeyboardButton(
-                text="تلقائيًا ⚙️",
+                text=BUTTONS[lang]["auto_entry"],
                 callback_data="auto_entry",
             )
         ],
@@ -180,7 +177,7 @@ def stringify_cam(
             (
                 f"🔖 Name: <b>{cam_data['name']}</b>\n"
                 f"🌐 IP Address: {cam_data['ip']}\n"
-                f"🛰️ DDNS: {cam_data['ddns']}\n"
+                f"🛰️ DDNS: {cam_data.get('ddns', "N/A")}\n"
                 f"🔌 Port: <b>{cam_data['port']}</b>\n"
                 f"🤵🏻 Admin Username: <code>{cam_data['admin_user']}</code>\n"
                 f"🔑 Admin Password: <code>{cam_data['admin_pass']}</code>\n"
@@ -212,7 +209,7 @@ def stringify_cam(
             (
                 f"🔖 Name: <b>{cam_data['name']}</b>\n"
                 f"🌐 IP Address: {cam_data['ip']}\n"
-                f"🛰️ DDNS: {cam_data['ddns']}\n"
+                f"🛰️ DDNS: {cam_data.get('ddns', "N/A")}\n"
                 f"🔌 Port: <b>{cam_data['port']}</b>\n"
                 f"👤 Username: <code>{cam_data['user']}</code>\n"
                 f"🔐 Password: <code>{cam_data['user_pass']}</code>\n"
@@ -283,6 +280,9 @@ async def extract_cam_info(raw_cam_info: str, context: ContextTypes.DEFAULT_TYPE
 async def media_group_sender(context: ContextTypes.DEFAULT_TYPE):
     is_admin = context.job.data
     photos_data = context.application.user_data[context.job.user_id]["photos_data"]
+    lang = context.application.user_data[context.job.user_id].get(
+        "lang", models.Language.ARABIC
+    )
     res = "no match"
     for p_data in photos_data:
         if p_data["caption"]:
@@ -295,13 +295,13 @@ async def media_group_sender(context: ContextTypes.DEFAULT_TYPE):
     if res == "no match":
         await context.bot.send_message(
             chat_id=context.job.chat_id,
-            text="خطأ في التنسيق ⚠️",
+            text=TEXTS[lang]["wrong_format"],
         )
         return
     elif res == "duplicate":
         await context.bot.send_message(
             chat_id=context.job.chat_id,
-            text="الكاميرا مضافة مسبقاً ⚠️",
+            text=TEXTS[lang]["duplicate_cam"],
         )
         return
     photos = [p_data["file_id"] for p_data in photos_data]
@@ -311,7 +311,7 @@ async def media_group_sender(context: ContextTypes.DEFAULT_TYPE):
             chat_id=context.job.chat_id,
             media=[InputMediaPhoto(media=file_id) for file_id in photos],
             caption=(
-                f"تم تحليل البيانات ✅\n\n"
+                TEXTS[lang]["analyze_info_success"]
                 + stringify_cam(
                     cam_data=context.application.user_data[context.job.user_id],
                     for_admin=is_admin,
@@ -321,25 +321,25 @@ async def media_group_sender(context: ContextTypes.DEFAULT_TYPE):
         keyboard = [
             [
                 InlineKeyboardButton(
-                    text="إضافة ➕",
+                    text=BUTTONS[lang]["confirm_add_cam"],
                     callback_data="confirm_add_cam",
                 )
             ],
-            build_back_button("back_to_get_cam_info"),
+            build_back_button("back_to_get_cam_info", lang=lang),
             (
                 back_to_admin_home_page_button[0]
                 if is_admin
-                else back_to_user_home_page_button[0]
+                else build_back_to_user_home_page_button(lang=lang)[0]
             ),
         ]
         await context.bot.send_message(
             chat_id=context.job.chat_id,
-            text="هل أنت متأكد من أنك تريد إضافة هذه الكاميرا؟",
+            text=TEXTS[lang]["confirm_add_cam"],
             reply_markup=InlineKeyboardMarkup(keyboard),
         )
     except Exception as e:
         await context.bot.send_message(
             chat_id=context.job.chat_id,
-            text="خطأ أثناء تحليل البيانات يرجى إعادة المحاولة من جديد ❗️",
+            text=TEXTS[lang]["add_cam_fail"],
         )
         log.error(f"error while sending media group: {e}")

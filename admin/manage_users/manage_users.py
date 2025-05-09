@@ -1,11 +1,11 @@
 from telegram import Chat, Update, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, CallbackQueryHandler
-from admin.user_settings.common import build_user_settings_keyboard
+from admin.manage_users.common import build_user_settings_keyboard
 from custom_filters import Admin
 from common.back_to_home_page import back_to_admin_home_page_button
 
 
-async def user_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def manage_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type == Chat.PRIVATE and Admin().filter(update):
         keyboard = build_user_settings_keyboard()
         keyboard.append(back_to_admin_home_page_button[0])
@@ -15,7 +15,7 @@ async def user_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
-user_settings_handler = CallbackQueryHandler(
-    user_settings,
-    "^user settings$|^back_to_user_settings$",
+manage_users_handler = CallbackQueryHandler(
+    manage_users,
+    "^manage_users$|^back_to_manage_users$",
 )

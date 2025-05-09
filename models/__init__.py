@@ -7,3 +7,4 @@ from models.CamPhoto import CamPhoto
 from models.AlertType import AlertType
 from models.Alert import Alert
 from models.AlertDest import AlertDest
+from models.Language import Language
