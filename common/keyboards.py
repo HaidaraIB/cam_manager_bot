@@ -35,7 +35,7 @@ def build_admin_keyboard():
             ),
             InlineKeyboardButton(
                 text="إعدادات المستخدم ⚙️👤",
-                callback_data="user settings",
+                callback_data="manage_users",
             ),
         ],
         [
